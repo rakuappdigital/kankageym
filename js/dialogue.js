@@ -164,7 +164,7 @@ const Dialogue = (() => {
     deccal_argue: {
       lines: [
         { speaker:'ex',     text: 'Harika. İşte bu.' },
-        { speaker:'ex',     text: 'Dün gece de tam böyle başladın. Kafka'yı yanlış yorumluyorsun diye 45 dakika bağırdın.' },
+        { speaker:'ex',     text: "Dün gece de tam böyle başladın. Kafka'yı yanlış yorumluyorsun diye 45 dakika bağırdın." },
         { speaker:'player', text: 'Ben... ne?' },
         { speaker:'ex',     text: 'Bir de üstüne Coffeeland\'da herkese duyurdun. Tebrikler.' },
         { speaker:'ex',     text: 'Git. Lütfen. Kafam çok yorgun.' },
