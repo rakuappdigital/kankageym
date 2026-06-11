@@ -1,40 +1,49 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Retro Narrative Game</title>
-    <link rel="stylesheet" href="css/style.css">
-    <!-- Google Fonts üzerinden retro 8-bit font -->
-    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Kanka, Geym</title>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <div id="game-wrapper">
+    <canvas id="game-canvas" width="800" height="600"></canvas>
 
-    <!-- Oyun Ekranı Konteyneri -->
-    <div id="game-container">
-        
-        <!-- Kuş Bakışı Harita Katmanı -->
-        <canvas id="game-canvas" width="800" height="600"></canvas>
-        
-        <!-- Sinematik ve Omuz Üstü Sahneler İçin Arka Plan Katmanı -->
-        <div id="scene-layer" class="hidden"></div>
-        
-        <!-- Diyalog Kutusu Katmanı -->
-        <div id="dialogue-box" class="hidden">
-            <p id="dialogue-text"></p>
-            <div id="continue-indicator" class="hidden">Devam (Boşluk / Tıkla)</div>
-        </div>
-
-        <!-- Ekran Kararma (Fade to Black) Katmanı -->
-        <div id="fade-overlay"></div>
+    <div id="dialogue-box" class="hidden">
+      <div id="dialogue-speaker"></div>
+      <div id="dialogue-text"></div>
+      <div id="dialogue-continue" class="hidden">▼ devam</div>
     </div>
 
-    <!-- Modüler Scriptler -->
-    <script src="js/stateManager.js"></script>
-    <script src="js/audioManager.js"></script>
-    <script src="js/dialogueManager.js"></script>
-    <script src="js/cutscenes.js"></script>
-    <script src="js/main.js"></script>
+    <div id="choice-box" class="hidden"></div>
+
+    <div id="hud" class="hidden">
+      <div id="memory-tracker"></div>
+    </div>
+
+    <div id="notif" class="hidden"></div>
+
+    <div id="fade"></div>
+
+    <div id="mobile-controls" class="hidden">
+      <div id="mob-dpad">
+        <button class="mob-btn" id="mob-up">▲</button>
+        <div class="mob-row">
+          <button class="mob-btn" id="mob-left">◀</button>
+          <button class="mob-btn" id="mob-interact">●</button>
+          <button class="mob-btn" id="mob-right">▶</button>
+        </div>
+        <button class="mob-btn" id="mob-down">▼</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/state.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/dialogue.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>
-
