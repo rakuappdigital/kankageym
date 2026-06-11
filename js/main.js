@@ -33,8 +33,9 @@ const Game = (() => {
   const mob = { up:false, down:false, left:false, right:false };
 
   // ── Cutscene state ──────────────────────────────────────
-  let cutTimer = 0, cutPhase = 0, cutZoom = 0;
-  let eyeOpen  = 0;  // 0→1 over time for scene 1
+  let cutPhase = 0, cutZoom = 0;
+  let eyeOpen  = 0;
+  let cutLocked = false; // prevents double-trigger between frames
 
   // ── HUD ─────────────────────────────────────────────────
   function updateHUD(){
@@ -203,63 +204,93 @@ const Game = (() => {
   }
 
   // ── Cutscene engine ──────────────────────────────────────
-  function runCutscene(){
-    // Phase 0: scene 1 (close-up eye opening)
-    // Phase 1: dialogue 1
-    // Phase 2: fade + kitchen
-    // Phase 3: kitchen dialogue a
-    // Phase 4: zoom + kitchen dialogue b
-    // Phase 5: exit to overworld
+  // Phases: 0=eye opening  1=scene1 dialogue  2=fade to kitchen
+  //         3=kitchen dialogue A  4=zoom  5=kitchen dialogue B  6=exit
 
+  function _cutsceneNext(nextPhase){
+    cutPhase = nextPhase;
+    cutLocked = false;
+  }
+
+  function runCutscene(){
+
+    // PHASE 0 — eye opens slowly
     if(cutPhase === 0){
-      eyeOpen += 0.008;
+      eyeOpen = Math.min(eyeOpen + 0.007, 1);
       Renderer.drawCutsceneCloseup(eyeOpen);
-      if(eyeOpen >= 1){
-        cutPhase = 1;
+      if(eyeOpen >= 1 && !cutLocked){
+        cutLocked = true;
+        cutPhase  = 1;
         Audio.play('magaram');
-        Dialogue.start(Dialogue.INTRO_SCENE1, ()=>{ cutPhase = 2; });
+        // small delay so last frame renders before dialogue appears
+        setTimeout(()=>{
+          Dialogue.start(Dialogue.INTRO_SCENE1, ()=> _cutsceneNext(2));
+        }, 200);
       }
+      return;
     }
-    else if(cutPhase === 1){
-      Renderer.drawCutsceneCloseup(eyeOpen);
+
+    // PHASE 1 — scene1 dialogue active (just keep drawing)
+    if(cutPhase === 1){
+      Renderer.drawCutsceneCloseup(1);
+      return;
     }
-    else if(cutPhase === 2){
-      cutPhase = 2.5;
+
+    // PHASE 2 — transition to kitchen
+    if(cutPhase === 2 && !cutLocked){
+      cutLocked = true;
       fadeOut(()=>{
+        cutZoom = 0;
         cutPhase = 3;
+        cutLocked = false;
         Renderer.drawCutsceneKitchen(0);
         fadeIn();
-        Dialogue.start(Dialogue.INTRO_SCENE2A, ()=>{ cutPhase = 4; });
+        setTimeout(()=>{
+          Dialogue.start(Dialogue.INTRO_SCENE2A, ()=> _cutsceneNext(4));
+        }, 400);
       });
+      return;
     }
-    else if(cutPhase === 3){
+
+    // PHASE 3 — kitchen dialogue A active
+    if(cutPhase === 3){
       Renderer.drawCutsceneKitchen(0);
+      return;
     }
-    else if(cutPhase === 4){
-      // zoom in
-      cutZoom = Math.min(cutZoom + 0.012, 1);
+
+    // PHASE 4 — zoom in, then start dialogue B
+    if(cutPhase === 4){
+      cutZoom = Math.min(cutZoom + 0.01, 1);
       Renderer.drawCutsceneKitchen(cutZoom);
-      if(cutZoom >= 0.6 && cutPhase === 4){
-        cutPhase = 4.5;
-        Dialogue.start(Dialogue.INTRO_SCENE2B, ()=>{ cutPhase = 5; });
+      if(cutZoom >= 0.55 && !cutLocked){
+        cutLocked = true;
+        cutPhase  = 5;
+        setTimeout(()=>{
+          Dialogue.start(Dialogue.INTRO_SCENE2B, ()=> _cutsceneNext(6));
+        }, 200);
       }
+      return;
     }
-    else if(cutPhase === 4.5){
+
+    // PHASE 5 — dialogue B active, keep drawing zoom
+    if(cutPhase === 5){
       Renderer.drawCutsceneKitchen(cutZoom);
+      return;
     }
-    else if(cutPhase === 5){
+
+    // PHASE 6 — exit to overworld
+    if(cutPhase === 6 && !cutLocked){
+      cutLocked = true;
       fadeOut(()=>{
         scene = 'OVERWORLD';
         State.set('introComplete', true);
         hud.classList.remove('hidden');
         mobCtrl.classList.remove('hidden');
         Audio.play('overworld');
-        // Spawn player at Mağaram position
         player.x = 400; player.y = 410;
-        fadeIn();
         updateHUD();
+        fadeIn();
       });
-      cutPhase = 99; // prevent re-trigger
     }
   }
 
