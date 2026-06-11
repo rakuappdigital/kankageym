@@ -1,719 +1,1482 @@
 'use strict';
 
-// ─────────────────────────────────────────────────────────────
-// RENDERER  –  all pixel-art drawing, no external image assets
-// ─────────────────────────────────────────────────────────────
-
 const Renderer = (() => {
   const canvas = document.getElementById('game-canvas');
-  const ctx    = canvas.getContext('2d');
-  const W = 800, H = 600;
+  const ctx = canvas.getContext('2d');
+  const W = 800;
+  const H = 600;
 
-  // ── palette ──────────────────────────────────────────────
-  const PAL = {
-    bg:       '#0d0d1a',
-    street:   '#1a1a2e',
-    sidewalk: '#252540',
-    lineCol:  '#2a2a50',
-    grass:    '#1a2e1a',
-    tree:     '#1a4a1a',
-    treeTop:  '#2a7a2a',
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
-    // buildings
-    bld1: '#1e1e3a', bld2: '#2a1e3a', bld3: '#1e2a3a',
-    bld4: '#2a2a1e', bld5: '#1a2a2a',
-    roof: '#14142e',
-
-    // neons
-    neonPurple: '#c060ff', neonPink:  '#ff60c0',
-    neonCyan:   '#40e0ff', neonGreen: '#40ff80',
-    neonYellow: '#ffe040', neonOrange:'#ff8040',
-
-    // player
-    playerBody: '#e0c060', playerShadow: '#8a7030',
-
-    // UI
-    highlight: '#c8a0ff',
-  };
-
-  // ── pixel helpers ─────────────────────────────────────────
-  function rect(x,y,w,h,c){ ctx.fillStyle=c; ctx.fillRect(x,y,w,h); }
-  function px(x,y,s,c)    { rect(x,y,s,s,c); }
-  function text(str,x,y,sz,c,align='left'){
-    ctx.font = `${sz}px 'Press Start 2P',monospace`;
-    ctx.fillStyle = c; ctx.textAlign = align;
-    ctx.fillText(str,x,y);
+  function clear() {
+    ctx.clearRect(0, 0, W, H);
   }
-  function border(x,y,w,h,c,t=2){ ctx.strokeStyle=c; ctx.lineWidth=t; ctx.strokeRect(x,y,w,h); }
 
-  // ── neon glow helper ──────────────────────────────────────
-  function neonText(str,x,y,sz,c){
+  function fillRect(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  }
+
+  function strokeRect(x, y, w, h, color, lw) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw || 1;
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  function drawNeon(text, x, y, color, size, glowColor) {
+    const gc = glowColor || color;
     ctx.save();
-    ctx.shadowColor = c; ctx.shadowBlur = 12;
-    text(str,x,y,sz,c,'center');
+    ctx.shadowColor = gc;
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = color;
+    ctx.font = `${size || 10}px "Press Start 2P", monospace`;
+    ctx.fillText(text, x, y);
     ctx.shadowBlur = 0;
     ctx.restore();
   }
-  function neonRect(x,y,w,h,c,glow=10){
-    ctx.save(); ctx.shadowColor=c; ctx.shadowBlur=glow;
-    ctx.strokeStyle=c; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
-    ctx.restore();
+
+  function circle(x, y, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  // ══════════════════════════════════════════════════════════
-  //  OVERWORLD MAP
-  // ══════════════════════════════════════════════════════════
-  function drawOverworld(locations, player, enterable) {
-    // sky / background
-    const grad = ctx.createLinearGradient(0,0,0,H);
-    grad.addColorStop(0,'#08081a'); grad.addColorStop(1,'#0d0d22');
-    ctx.fillStyle = grad; ctx.fillRect(0,0,W,H);
+  // ── Stars ─────────────────────────────────────────────────────────────────
 
-    _drawStars();
-    _drawStreetGrid();
+  const STARS = (() => {
+    const s = [];
+    for (let i = 0; i < 120; i++) {
+      s.push({ x: Math.random() * W, y: Math.random() * 220, r: Math.random() * 1.4 + 0.3, a: Math.random() * 0.6 + 0.4 });
+    }
+    return s;
+  })();
+
+  function drawStars() {
+    STARS.forEach(s => {
+      ctx.globalAlpha = s.a;
+      circle(s.x, s.y, s.r, '#fff');
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Overworld ─────────────────────────────────────────────────────────────
+
+  function drawOverworld(locations, nearLocationId, playerX, playerY) {
+    // Night sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, 260);
+    sky.addColorStop(0, '#05060f');
+    sky.addColorStop(1, '#1a1b38');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, 260);
+
+    drawStars();
+
+    // Ground
+    fillRect(0, 250, W, H - 250, '#1c1c2e');
+
+    // Sidewalks
+    fillRect(0, 250, W, 18, '#2a2a3e');
+    fillRect(0, H - 60, W, 60, '#2a2a3e');
+
+    // Road
+    fillRect(0, 268, W, H - 328, '#141420');
+
+    // Road lane markings
+    ctx.setLineDash([30, 22]);
+    ctx.strokeStyle = '#3a3a50';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, 380);
+    ctx.lineTo(W, 380);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Sidewalk edge lines
+    ctx.strokeStyle = '#33334a';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, 268); ctx.lineTo(W, 268); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, H - 60); ctx.lineTo(W, H - 60); ctx.stroke();
+
+    // Trees
     _drawTrees();
-    _drawBuildings(locations, enterable);
-    _drawPlayer(player);
-    _drawMinimapHint(locations, player);
+
+    // Buildings
+    locations.forEach(loc => {
+      const near = (loc.id === nearLocationId);
+      _drawBuilding(loc, near);
+    });
+
+    // Player
+    _drawPlayerOverworld(playerX, playerY);
+
+    // Minimap
+    _drawMinimap(locations, playerX, playerY);
   }
 
-  function _drawStars(){
-    // static pixel stars
-    const pts = [
-      [40,30],[120,15],[220,45],[350,20],[490,35],[600,12],[720,28],
-      [80,80],[170,60],[310,90],[450,55],[560,75],[670,40],[760,65],
-      [30,140],[200,120],[380,110],[530,130],[700,100],
+  function _drawTrees() {
+    const trees = [
+      { x: 230, y: 490 }, { x: 290, y: 490 }, { x: 500, y: 490 }, { x: 555, y: 490 },
+      { x: 230, y: 300 }, { x: 430, y: 300 }, { x: 550, y: 300 },
     ];
-    pts.forEach(([x,y])=>{ px(x,y,2,'rgba(255,255,255,0.6)'); });
-  }
-
-  function _drawStreetGrid(){
-    // horizontal streets
-    [[160,30],[300,30],[460,30],[30,230],[720,230]].forEach(([y,t])=>{
-      rect(0,y,W,t,PAL.street);
-      rect(0,y+13,W,4,PAL.lineCol);
-    });
-    // vertical streets
-    [[100,30],[260,30],[500,30],[640,30]].forEach(([x,t])=>{
-      rect(x,0,t,H,PAL.street);
-      rect(x+13,0,4,H,PAL.lineCol);
-    });
-    // sidewalks (slightly lighter edges)
-    rect(0,155,W,8,PAL.sidewalk);
-    rect(0,188,W,8,PAL.sidewalk);
-    rect(0,455,W,8,PAL.sidewalk);
-    rect(0,488,W,8,PAL.sidewalk);
-  }
-
-  function _drawTrees(){
-    const trees = [[375,170],[430,170],[375,440],[430,440],[190,170],[190,440],[590,170],[590,440]];
-    trees.forEach(([x,y])=>{
-      rect(x+5,y+16,6,12,PAL.tree);
-      px(x,y,16,PAL.treeTop);
-      px(x+2,y-6,12,PAL.treeTop);
-      px(x+4,y-10,8,'#1e5a1e');
+    trees.forEach(t => {
+      fillRect(t.x - 2, t.y - 28, 4, 28, '#4a3015');
+      ctx.fillStyle = '#1a4a1a';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y - 32, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1e5e1e';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y - 38, 9, 0, Math.PI * 2);
+      ctx.fill();
     });
   }
 
-  function _drawBuildings(locations, enterable){
-    locations.forEach(loc => _drawBuilding(loc, enterable && enterable===loc.id));
+  function _drawBuilding(loc, near) {
+    const { id, x, y, w, h } = loc;
+
+    if (near) {
+      ctx.save();
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 22;
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x - 4, y - 4, w + 8, h + 8);
+      ctx.restore();
+
+      ctx.save();
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '8px "Press Start 2P", monospace';
+      const label = '[ E - GİR ]';
+      const lw = ctx.measureText(label).width;
+      ctx.fillText(label, x + w / 2 - lw / 2, y - 10);
+      ctx.restore();
+    }
+
+    switch (id) {
+      case 'Mağaram':             _drawMagaram(x, y, w, h); break;
+      case 'Deccal Ex':           _drawDeccalEx(x, y, w, h); break;
+      case 'Coffeeland XL Plus':  _drawCoffeeland(x, y, w, h); break;
+      case 'Maun Sandık Bar':     _drawBar(x, y, w, h); break;
+      case "Kanka's Home":        _drawKanka(x, y, w, h); break;
+    }
   }
 
-  function _drawBuilding(loc, canEnter){
-    const {x, y, w, h, id, label, neonColor, neonLabel} = loc;
-    const clr = {
-      'Deccal Ex':         PAL.bld2,
-      'Coffeeland XL Plus':PAL.bld3,
-      'Maun Sandık Bar':   PAL.bld1,
-      "Kanka's Home":      PAL.bld4,
-      'Mağaram':           PAL.bld5,
-    }[id] || PAL.bld1;
+  // ─── Mağaram (modest apartment, purple neon) ─────────────────────────────
+  function _drawMagaram(x, y, w, h) {
+    fillRect(x, y, w, h, '#2a1f3d');
+    fillRect(x, y, w, 8, '#3a2f4d');
 
-    // building body
-    rect(x, y, w, h, clr);
-    rect(x, y, w, 8, PAL.roof);  // roof strip
-
-    // windows (pixel art grid)
-    const wCols = Math.floor((w-14)/22);
-    const wRows = Math.floor((h-24)/22);
-    for(let r=0;r<wRows;r++){
-      for(let c=0;c<wCols;c++){
-        const wx=x+8+c*22, wy=y+16+r*22;
-        const lit = Math.random() > 0.35;
-        rect(wx,wy,12,10, lit?'#ffe880':'#1a1a30');
-        if(lit){ rect(wx+5,wy,1,10,'rgba(255,255,180,0.3)'); }
+    // Brickwork
+    for (let row = 0; row < 6; row++) {
+      for (let col = 0; col < 5; col++) {
+        const bx = x + col * (w / 5) + (row % 2 === 0 ? 0 : w / 10);
+        const by = y + 10 + row * 16;
+        strokeRect(bx, by, w / 5 - 1, 14, '#35274a', 0.5);
       }
     }
 
-    // neon sign
-    if(neonLabel){
-      ctx.save();
-      ctx.shadowColor = neonColor || '#ff60c0';
-      ctx.shadowBlur  = 16;
-      ctx.fillStyle   = neonColor || '#ff60c0';
-      ctx.font        = "8px 'Press Start 2P',monospace";
-      ctx.textAlign   = 'center';
-      ctx.fillText(neonLabel, x+w/2, y+h-8);
-      ctx.restore();
+    // Door
+    fillRect(x + w / 2 - 12, y + h - 34, 24, 34, '#1a0f2e');
+    fillRect(x + w / 2 - 10, y + h - 32, 20, 30, '#251840');
+    circle(x + w / 2 + 7, y + h - 16, 2, '#b8860b');
+
+    // Potted plant outside door
+    fillRect(x + w / 2 + 16, y + h - 20, 8, 10, '#6b4c2a');
+    fillRect(x + w / 2 + 14, y + h - 20, 12, 3, '#8b6040');
+    ctx.fillStyle = '#2d7a2d';
+    ctx.beginPath(); ctx.arc(x + w / 2 + 20, y + h - 26, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a9a3a';
+    ctx.beginPath(); ctx.arc(x + w / 2 + 22, y + h - 30, 5, 0, Math.PI * 2); ctx.fill();
+
+    // 3x3 Window grid
+    const winColors = ['#4a3060', '#f0c060', '#4a3060', '#f0c060', '#4a3060', '#f0c060', '#4a3060', '#4a3060', '#f0c060'];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const wx = x + 8 + col * 32;
+        const wy = y + 16 + row * 26;
+        fillRect(wx, wy, 20, 18, '#1a1030');
+        fillRect(wx + 1, wy + 1, 18, 16, winColors[row * 3 + col]);
+        fillRect(wx + 9, wy + 1, 2, 16, '#2a1f3d');
+        fillRect(wx + 1, wy + 8, 18, 2, '#2a1f3d');
+      }
     }
 
-    // door
-    rect(x+w/2-8, y+h-20, 16, 20, '#333');
-    rect(x+w/2-7, y+h-19, 14, 18, '#1a1a2a');
+    drawNeon('MAĞARAM', x + 6, y + h - 38, '#cc88ff', 7, '#aa44ff');
+  }
 
-    // entrance glow when enterable
-    if(canEnter){
-      ctx.save();
-      ctx.shadowColor = '#ffe080'; ctx.shadowBlur = 24;
-      ctx.strokeStyle = '#ffe080'; ctx.lineWidth = 2;
-      ctx.strokeRect(x,y,w,h);
-      ctx.restore();
-      text(label, x+w/2, y-22, 8, '#ffe080','center');
-      text('[ GIRMEK İÇİN E ]', x+w/2, y-10, 6, '#ffcc60','center');
-    } else {
-      // subtle label always
-      ctx.fillStyle='rgba(200,160,255,0.6)';
-      ctx.font="7px 'Press Start 2P',monospace"; ctx.textAlign='center';
-      ctx.fillText(label, x+w/2, y-8);
+  // ─── Deccal Ex (elegant apartment, pink neon DEVİN) ──────────────────────
+  function _drawDeccalEx(x, y, w, h) {
+    fillRect(x, y, w, h, '#1e1428');
+    for (let i = 0; i < 3; i++) {
+      fillRect(x + 8 + i * 34, y, 4, h, '#261c34');
     }
-  }
+    fillRect(x, y, w, 6, '#3d2855');
 
-  function _drawPlayer(p){
-    const {x, y} = p;
-    // shadow
-    ctx.save(); ctx.globalAlpha=0.4;
-    ctx.fillStyle='#000'; ctx.beginPath();
-    ctx.ellipse(x,y+10,10,5,0,0,Math.PI*2); ctx.fill();
-    ctx.restore();
-    // body (top-down sprite)
-    rect(x-6,y-8,12,12,PAL.playerBody);
-    rect(x-4,y-12,8,6,PAL.playerBody);  // head
-    rect(x-2,y-14,4,4,'#c8a0ff');       // hair hint
-    // feet dots
-    rect(x-5,y+2,4,4,PAL.playerShadow);
-    rect(x+1,y+2,4,4,PAL.playerShadow);
-  }
+    // Double door
+    fillRect(x + w / 2 - 20, y + h - 42, 40, 42, '#0d0820');
+    fillRect(x + w / 2 - 19, y + h - 41, 18, 40, '#1a1030');
+    fillRect(x + w / 2 + 1, y + h - 41, 18, 40, '#1a1030');
+    fillRect(x + w / 2 - 17, y + h - 38, 14, 14, '#251840');
+    fillRect(x + w / 2 + 3, y + h - 38, 14, 14, '#251840');
+    fillRect(x + w / 2 - 17, y + h - 22, 14, 14, '#251840');
+    fillRect(x + w / 2 + 3, y + h - 22, 14, 14, '#251840');
+    circle(x + w / 2 - 3, y + h - 20, 2, '#c0a050');
+    circle(x + w / 2 + 3, y + h - 20, 2, '#c0a050');
 
-  function _drawMinimapHint(locations, player){
-    // tiny minimap top-left
-    const mx=10,my=10,mw=90,mh=70,scaleX=mw/W,scaleY=mh/H;
-    ctx.save(); ctx.globalAlpha=0.75;
-    rect(mx,my,mw,mh,'rgba(0,0,0,0.7)');
-    border(mx,my,mw,mh,'#555');
-    locations.forEach(l=>{
-      rect(mx+l.x*scaleX, my+l.y*scaleY, l.w*scaleX, l.h*scaleY, '#9060ff');
+    // Intercom nameplate
+    fillRect(x + w / 2 + 22, y + h - 32, 16, 10, '#3a3040');
+    fillRect(x + w / 2 + 24, y + h - 30, 12, 6, '#555070');
+
+    // Curtained windows
+    [
+      { wx: x + 10, wy: y + 14, lit: true },
+      { wx: x + 42, wy: y + 14, lit: false },
+      { wx: x + 74, wy: y + 14, lit: false },
+      { wx: x + 10, wy: y + 50, lit: false },
+      { wx: x + 74, wy: y + 50, lit: true },
+    ].forEach(({ wx, wy, lit }) => {
+      fillRect(wx, wy, 24, 22, '#0d0820');
+      fillRect(wx + 1, wy + 1, 22, 20, lit ? '#f0d0c0' : '#2a1840');
+      fillRect(wx + 1, wy + 1, 5, 20, '#9b59b6');
+      fillRect(wx + 18, wy + 1, 5, 20, '#9b59b6');
     });
-    rect(mx+player.x*scaleX-2, my+player.y*scaleY-2, 4, 4, '#ffe080');
-    ctx.restore();
+
+    drawNeon('DEVİN', x + 22, y + h - 50, '#ff80c0', 9, '#ff40a0');
   }
 
-  // ══════════════════════════════════════════════════════════
-  //  LOCATION SCENES  (over-the-shoulder)
-  // ══════════════════════════════════════════════════════════
-  function drawLocationScene(id){
-    switch(id){
-      case 'Deccal Ex':         _sceneDeccal();   break;
-      case 'Coffeeland XL Plus':_sceneCoffee();   break;
-      case 'Maun Sandık Bar':   _scenePub();      break;
-      case "Kanka's Home":      _sceneKanka();    break;
-      case 'Mağaram':           _sceneMagaram();  break;
-      default: rect(0,0,W,H,'#111');
+  // ─── Coffeeland XL Plus (CLEARLY a coffee shop) ───────────────────────────
+  function _drawCoffeeland(x, y, w, h) {
+    fillRect(x, y, w, h, '#2a1a0a');
+
+    // Warm amber glow
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    const grd = ctx.createRadialGradient(x + w / 2, y + h / 2, 10, x + w / 2, y + h / 2, w);
+    grd.addColorStop(0, '#ffaa44');
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.fillRect(x - 20, y - 20, w + 40, h + 40);
+    ctx.restore();
+
+    // Striped awning — full width
+    const awningY = y + 10;
+    const awningH = 28;
+    const stripeW = 10;
+    const numStripes = Math.ceil(w / stripeW);
+    for (let i = 0; i < numStripes; i++) {
+      fillRect(x + i * stripeW, awningY, stripeW, awningH, i % 2 === 0 ? '#cc3300' : '#f5f5f5');
+    }
+    // Awning scallop edge
+    for (let i = 0; i <= numStripes; i++) {
+      ctx.fillStyle = '#aa2200';
+      ctx.beginPath();
+      ctx.arc(x + i * stripeW, awningY + awningH, 5, 0, Math.PI);
+      ctx.fill();
+    }
+    fillRect(x, awningY, w, 3, '#880000');
+
+    // Giant display window
+    fillRect(x + 4, awningY + awningH + 2, w - 8, 40, '#0d0806');
+    fillRect(x + 5, awningY + awningH + 3, w - 10, 38, '#3d2a10');
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    fillRect(x + 5, awningY + awningH + 3, w - 10, 38, '#ff9933');
+    ctx.restore();
+
+    // Coffee cup silhouettes in window
+    [x + 25, x + 55, x + 85].forEach(cx => {
+      const cy = awningY + awningH + 20;
+      fillRect(cx - 8, cy - 6, 16, 14, '#1a0d00');
+      ctx.strokeStyle = '#1a0d00'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx + 9, cy, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+      fillRect(cx - 10, cy + 8, 20, 3, '#1a0d00');
+    });
+
+    // Coffee cup ICON on facade (large)
+    const iconX = x + w / 2;
+    const iconY = awningY + awningH + 60;
+    fillRect(iconX - 14, iconY - 10, 28, 22, '#8b4513');
+    fillRect(iconX - 12, iconY - 8, 24, 18, '#c0702a');
+    ctx.strokeStyle = '#8b4513'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(iconX + 16, iconY + 1, 8, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+    fillRect(iconX - 16, iconY + 12, 32, 5, '#8b4513');
+    // Steam from cup icon
+    ctx.strokeStyle = '#ffcc88'; ctx.lineWidth = 2;
+    for (let s = -1; s <= 1; s++) {
+      ctx.beginPath();
+      ctx.moveTo(iconX + s * 7, iconY - 12);
+      ctx.bezierCurveTo(iconX + s * 7 - 4, iconY - 20, iconX + s * 7 + 4, iconY - 24, iconX + s * 7, iconY - 30);
+      ctx.stroke();
+    }
+
+    // Door
+    fillRect(x + w / 2 - 14, y + h - 38, 28, 38, '#2a1505');
+    fillRect(x + w / 2 - 12, y + h - 36, 24, 34, '#3d2010');
+    circle(x + w / 2 + 8, y + h - 18, 2, '#c8960c');
+
+    drawNeon('COFFEE', x + 8, y + h - 48, '#00ffff', 8, '#00ccff');
+  }
+
+  // ─── Maun Sandık Bar (CLEARLY a bar — basement feel) ─────────────────────
+  function _drawBar(x, y, w, h) {
+    fillRect(x, y, w, h, '#0d0d0d');
+
+    // Stone texture
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 7; col++) {
+        const shade = (row + col) % 2 === 0 ? '#111111' : '#0a0a0a';
+        fillRect(x + col * Math.floor(w / 7), y + row * Math.floor(h / 8), Math.floor(w / 7) - 1, Math.floor(h / 8) - 1, shade);
+      }
+    }
+
+    // Steps going down — basement feel
+    for (let s = 0; s < 4; s++) {
+      const sw = w - s * 12;
+      const sx = x + s * 6;
+      const sy = y + h - 16 + s * 4;
+      fillRect(sx, sy, sw, 4, `hsl(0,0%,${15 + s * 4}%)`);
+      fillRect(sx, sy, sw, 1, '#333');
+    }
+
+    // Heavy door (inset)
+    fillRect(x + w / 2 - 18, y + h - 55, 36, 45, '#1a0a00');
+    fillRect(x + w / 2 - 16, y + h - 53, 32, 41, '#220e00');
+    for (let sy2 = 0; sy2 < 3; sy2++) {
+      for (let sx2 = 0; sx2 < 3; sx2++) {
+        circle(x + w / 2 - 10 + sx2 * 10, y + h - 48 + sy2 * 12, 2, '#444');
+      }
+    }
+
+    // Barred small windows
+    [x + 10, x + w - 32].forEach(wx => {
+      const wy = y + 20;
+      fillRect(wx, wy, 22, 18, '#0d0d0d');
+      fillRect(wx + 1, wy + 1, 20, 16, '#330a00');
+      ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
+      for (let b = 0; b < 4; b++) {
+        ctx.beginPath();
+        ctx.moveTo(wx + 4 + b * 5, wy);
+        ctx.lineTo(wx + 4 + b * 5, wy + 18);
+        ctx.stroke();
+      }
+    });
+
+    // PIXEL-ART BEER MUG on facade
+    const mugX = x + w / 2 - 2;
+    const mugY = y + 50;
+    fillRect(mugX - 10, mugY, 20, 26, '#cc8800');
+    fillRect(mugX - 8, mugY + 2, 16, 20, '#ffcc00');
+    // Foam
+    fillRect(mugX - 12, mugY - 6, 24, 8, '#ffffff');
+    ctx.fillStyle = '#f0f0f0';
+    [mugX - 8, mugX, mugX + 6].forEach(bx => {
+      ctx.beginPath(); ctx.arc(bx, mugY - 6, 4, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.strokeStyle = '#cc8800'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(mugX + 14, mugY + 12, 7, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+    ctx.strokeStyle = '#994400'; ctx.lineWidth = 1;
+    ctx.strokeRect(mugX - 10, mugY, 20, 26);
+
+    // Green OPEN neon box
+    ctx.save();
+    ctx.shadowColor = '#00ff44'; ctx.shadowBlur = 18;
+    fillRect(x + w - 40, y + 45, 36, 16, '#001a00');
+    ctx.fillStyle = '#00ff44';
+    ctx.font = '7px "Press Start 2P", monospace';
+    ctx.fillText('OPEN', x + w - 36, y + 57);
+    ctx.restore();
+
+    // Orange neon text
+    drawNeon('MAUN', x + 5, y + h - 52, '#ff8800', 6, '#ff6600');
+    drawNeon('SANDIK BAR', x + 5, y + h - 40, '#ff8800', 6, '#ff6600');
+  }
+
+  // ─── Kanka's Home (casual Istanbul apartment, balcony) ────────────────────
+  function _drawKanka(x, y, w, h) {
+    fillRect(x, y, w, h, '#1a2030');
+    fillRect(x, y, w, 6, '#252e40');
+
+    // Istanbul-style balcony
+    const balX = x + 10;
+    const balY = y + 20;
+    const balW = w - 20;
+    const balH = 30;
+    fillRect(balX, balY, balW, balH, '#1e2840');
+    fillRect(balX, balY + balH, balW, 4, '#2a3450');
+    // Railing
+    fillRect(balX, balY, balW, 3, '#3a4a60');
+    for (let i = 0; i <= Math.floor(balW / 8); i++) {
+      fillRect(balX + i * 8, balY, 2, balH + 4, '#2a3450');
+    }
+    // Items: plant + laundry + bicycle wheel
+    fillRect(balX + 4, balY + 8, 8, 10, '#5a3a1a');
+    ctx.fillStyle = '#2a7a2a';
+    ctx.beginPath(); ctx.arc(balX + 8, balY + 6, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#888'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(balX + 20, balY + 4); ctx.lineTo(balX + 70, balY + 6); ctx.stroke();
+    fillRect(balX + 34, balY + 6, 10, 12, '#5588aa');
+    ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(balX + 60, balY + 18, 8, 0, Math.PI * 2); ctx.stroke();
+
+    // Windows
+    [
+      { wx: x + 12, wy: balY + balH + 8, lit: true },
+      { wx: x + 50, wy: balY + balH + 8, lit: false },
+      { wx: x + 88, wy: balY + balH + 8, lit: true },
+      { wx: x + 30, wy: y + h - 60, lit: true },
+    ].forEach(({ wx, wy, lit }) => {
+      fillRect(wx, wy, 28, 22, '#0d1018');
+      fillRect(wx + 1, wy + 1, 26, 20, lit ? '#f5d89a' : '#1a2030');
+      for (let sl = 0; sl < 3; sl++) {
+        fillRect(wx + 1, wy + 1 + sl * 6, 26, 2, lit ? '#e0c070' : '#151e2d');
+      }
+    });
+
+    // Shoes near door
+    fillRect(x + w / 2 - 22, y + h - 8, 10, 5, '#aa3300');
+    fillRect(x + w / 2 - 10, y + h - 8, 10, 5, '#883300');
+
+    // Door
+    fillRect(x + w / 2 - 14, y + h - 38, 28, 38, '#151e2d');
+    fillRect(x + w / 2 - 12, y + h - 36, 24, 34, '#1e2840');
+    circle(x + w / 2 + 8, y + h - 18, 2, '#8b9bab');
+
+    drawNeon("KANKA'S", x + 8, y + h - 48, '#44ff88', 7, '#22ee66');
+  }
+
+  // ── Player (top-down) ─────────────────────────────────────────────────────
+
+  function _drawPlayerOverworld(px, py) {
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(px, py + 12, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    fillRect(px - 6, py - 4, 12, 12, '#f0c060');
+    circle(px, py - 8, 7, '#f5d070');
+    circle(px - 2, py - 9, 1.2, '#1a1020');
+    circle(px + 2, py - 9, 1.2, '#1a1020');
+    fillRect(px - 6, py - 14, 12, 5, '#2a1a0a');
+    fillRect(px - 6, py + 7, 5, 4, '#3a2a1a');
+    fillRect(px + 1, py + 7, 5, 4, '#3a2a1a');
+  }
+
+  // ── Minimap ───────────────────────────────────────────────────────────────
+
+  function _drawMinimap(locations, playerX, playerY) {
+    const mx = 8, my = 8, mw = 90, mh = 70;
+    const scaleX = mw / W;
+    const scaleY = mh / H;
+
+    ctx.globalAlpha = 0.75;
+    fillRect(mx, my, mw, mh, '#0a0a14');
+    ctx.globalAlpha = 1;
+    strokeRect(mx, my, mw, mh, '#444466', 1);
+
+    const locColors = {
+      'Mağaram': '#9966cc',
+      'Deccal Ex': '#cc66aa',
+      'Coffeeland XL Plus': '#cc8833',
+      'Maun Sandık Bar': '#cc4400',
+      "Kanka's Home": '#44aa66',
+    };
+    locations.forEach(loc => {
+      const lx = mx + loc.x * scaleX;
+      const ly = my + loc.y * scaleY;
+      const lw = loc.w * scaleX;
+      const lh = loc.h * scaleY;
+      fillRect(lx, ly, lw, lh, locColors[loc.id] || '#888');
+    });
+
+    const pdx = mx + playerX * scaleX;
+    const pdy = my + playerY * scaleY;
+    circle(pdx, pdy, 3, '#fff');
+
+    ctx.fillStyle = '#aaaacc';
+    ctx.font = '5px "Press Start 2P", monospace';
+    ctx.fillText('HARİTA', mx + 2, my + mh + 8);
+  }
+
+  // ── Location scene ────────────────────────────────────────────────────────
+
+  function drawLocationScene(id) {
+    switch (id) {
+      case 'Deccal Ex':          _scDeccalEx(); break;
+      case 'Coffeeland XL Plus': _scCoffeeland(); break;
+      case 'Maun Sandık Bar':    _scBar(); break;
+      case "Kanka's Home":       _scKanka(); break;
+      case 'Mağaram':            _scMagaram(); break;
+      default: fillRect(0, 0, W, H, '#111');
     }
     _drawPlayerHead();
   }
 
-  function _sceneDeccal(){
-    // Apartment door hallway – purple/pink palette
-    const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#1a0a22'); g.addColorStop(1,'#2e0a1e');
-    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    // wall pattern
-    for(let y=0;y<H;y+=40){ rect(0,y,W,1,'rgba(255,100,200,0.06)'); }
-    for(let x=0;x<W;x+=60){ rect(x,0,1,H,'rgba(255,100,200,0.04)'); }
-    // door frame
-    rect(270,100,260,400,'#2a0e22'); rect(280,110,240,380,'#1e0a1e');
-    border(270,100,260,400,'#7a4060',3);
-    // door ornament
-    rect(380,160,40,40,'#3a1a2e'); border(380,160,40,40,'#7a4060');
-    // hallway lights
-    rect(310,20,180,8,'#ffe0c0'); neonRect(310,20,180,8,'#ff8060',20);
-    rect(320,28,160,40,'rgba(255,180,120,0.08)');
-    // potted plant
-    rect(210,380,30,80,'#1a0e0a'); rect(200,360,50,30,'#2a4a1a'); rect(208,340,35,25,'#2a5a1a'); rect(215,325,20,20,'#1e4a1a');
-    // photo frames on wall
-    [[120,200,60,80],[140,320,50,60],[660,180,70,90],[650,310,55,70]].forEach(([x,y,w,h])=>{
-      rect(x,y,w,h,'#2a1020'); border(x,y,w,h,'#7a4060',2);
-      rect(x+5,y+5,w-10,h-10,'#1a0818');
-    });
-    // NPC: Deccal Ex (pixel art female figure, center-right)
-    _drawNpcEx(480, 140);
+  function _drawPlayerHead() {
+    const px = 80, py = H - 60;
+    ctx.globalAlpha = 0.92;
+    fillRect(px - 30, py + 10, 60, 80, '#0a0810');
+    circle(px, py, 32, '#0a0810');
+    ctx.globalAlpha = 1;
   }
 
-  function _sceneCoffee(){
-    // Warm coffee shop
-    rect(0,0,W,H,'#1a1008');
-    // wooden walls
-    for(let y=0;y<H;y+=18){ rect(0,y,W,1,'rgba(180,100,40,0.12)'); }
-    // counter
-    rect(300,280,W,60,'#3a2010'); rect(300,340,W,W,'#2a1808');
-    border(300,280,W-300,60,'#7a4820',2);
-    // shelf of cups / bottles
-    rect(320,200,460,12,'#4a2818'); border(320,200,460,12,'#7a4820');
-    [[340,150],[400,145],[460,152],[520,148],[580,150],[640,145],[700,150]].forEach(([x,y])=>{
-      rect(x,y,18,55,'#2a1808'); rect(x+2,y+2,14,40,'rgba(180,120,60,0.4)');
-      border(x,y,18,55,'#7a5030');
-    });
-    // window
-    rect(80,80,200,180,'#0d1a2a'); border(80,80,200,180,'#7a5030',3);
-    rect(90,90,180,160,'rgba(100,150,200,0.15)');
-    rect(175,80,4,180,'#7a5030'); rect(80,165,200,4,'#7a5030');
-    neonRect(80,80,200,180,'#40b0ff',6);
-    // light from ceiling
-    rect(340,0,80,20,'#ffe0a0'); rect(300,20,160,80,'rgba(255,200,100,0.08)');
-    // coffee machine (pixel art)
-    rect(520,220,100,70,'#2a2a2a'); rect(530,230,80,50,'#1a1a1a');
-    rect(550,260,20,30,'#333'); neonRect(520,220,100,70,'#ff4040',8);
-    rect(555,235,10,10,'#ff4040');
-    // NPC: barista
-    _drawNpcBarista(520, 150);
-  }
+  function _scDeccalEx() {
+    fillRect(0, 0, W, H, '#1a0f28');
 
-  function _scenePub(){
-    // Dark pub
-    const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#0a0a05'); g.addColorStop(1,'#1a1205');
-    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    // bar counter
-    rect(200,320,600,50,'#3a2808'); rect(200,370,600,400,'#2a1e08');
-    border(200,320,600,50,'#7a5820',2);
-    // glasses on counter
-    [[260,290],[310,285],[360,292],[500,288],[560,290],[620,285]].forEach(([x,y])=>{
-      rect(x,y,20,35,'rgba(200,240,255,0.2)'); border(x,y,20,35,'rgba(200,240,255,0.4)',1);
-      rect(x+5,y+5,10,20,'rgba(180,220,240,0.15)');
-    });
-    // neon signs on wall
-    neonText('OPEN',120,80,18,PAL.neonGreen);
-    neonText('BAR', 680,100,22,PAL.neonOrange);
-    // beer taps
-    [[440,280],[480,280],[520,280]].forEach(([x,y])=>{
-      rect(x,y,10,40,'#888'); rect(x-5,y-10,20,14,'#666');
-    });
-    // pool table (distant, dark)
-    rect(50,300,180,120,'#0a2a0a'); border(50,300,180,120,'#3a8a3a',2);
-    // stools
-    [[240,390],[310,390],[390,390],[470,390],[550,390],[630,390]].forEach(([x,y])=>{
-      rect(x,y,30,50,'#3a2010'); rect(x+5,y+45,20,5,'#2a1808');
-    });
-    // NPC: bartender
-    _drawNpcBartender(520, 140);
-  }
+    const floor = ctx.createLinearGradient(0, 450, 0, H);
+    floor.addColorStop(0, '#2a1f3d');
+    floor.addColorStop(1, '#1a1030');
+    ctx.fillStyle = floor;
+    ctx.fillRect(0, 450, W, H - 450);
 
-  function _sceneKanka(){
-    // Cozy living room
-    rect(0,0,W,H,'#100e20');
-    // wallpaper hint
-    for(let y=0;y<H;y+=32) for(let x=0;x<W;x+=32){
-      ctx.fillStyle='rgba(80,60,120,0.04)'; ctx.fillRect(x,y,30,30);
+    fillRect(0, 0, W, 100, '#110820');
+    fillRect(0, 100, 180, 360, '#251838');
+    fillRect(620, 100, 180, 360, '#251838');
+
+    // Wallpaper stripes
+    for (let i = 0; i < 30; i++) {
+      ctx.globalAlpha = 0.12;
+      fillRect(180 + i * 22, 100, 2, 350, '#cc88ff');
     }
-    // sofa (center)
-    rect(180,340,420,100,'#2a2040'); rect(170,380,440,70,'#221838');
-    border(180,340,420,100,'#4a3060',2);
-    // cushions
-    [[200,350],[310,350],[420,350],[520,350]].forEach(([x,y])=>{
-      rect(x,y,80,60,'#3a2858'); border(x,y,80,60,'#5a3878');
+    ctx.globalAlpha = 1;
+
+    // Door frame
+    fillRect(310, 100, 180, 360, '#1a0f28');
+    fillRect(314, 104, 172, 356, '#0d0815');
+    fillRect(310, 100, 180, 8, '#3a2855');
+    fillRect(310, 100, 8, 360, '#3a2855');
+    fillRect(482, 100, 8, 360, '#3a2855');
+
+    // Floor tiles
+    ctx.strokeStyle = '#3a2855'; ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i++) {
+      ctx.beginPath(); ctx.moveTo(i * 80, 450); ctx.lineTo(i * 80, H); ctx.stroke();
+    }
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath(); ctx.moveTo(0, 450 + i * 40); ctx.lineTo(W, 450 + i * 40); ctx.stroke();
+    }
+
+    // Potted plant
+    fillRect(520, 360, 20, 90, '#3a2010');
+    fillRect(514, 355, 32, 8, '#5a3020');
+    ctx.fillStyle = '#2a7a2a'; ctx.beginPath(); ctx.arc(530, 345, 20, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a9a3a'; ctx.beginPath(); ctx.arc(540, 334, 16, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a8a2a'; ctx.beginPath(); ctx.arc(520, 332, 13, 0, Math.PI * 2); ctx.fill();
+
+    // Photo frames
+    [{ x: 188, y: 150 }, { x: 188, y: 240 }, { x: 570, y: 180 }].forEach(f => {
+      fillRect(f.x, f.y, 55, 65, '#3a2855');
+      fillRect(f.x + 3, f.y + 3, 49, 59, '#0d0815');
+      fillRect(f.x + 5, f.y + 5, 45, 55, '#2a1840');
+      circle(f.x + 27, f.y + 26, 11, '#cc88ff');
+      fillRect(f.x + 13, f.y + 38, 28, 14, '#aa66ee');
     });
-    // TV (off)
-    rect(280,120,240,170,'#0a0a0a'); border(280,120,240,170,'#3a3050',2);
-    rect(390,290,20,40,'#1a1828');
-    // bookshelf
-    rect(50,120,80,300,'#1e1830'); border(50,120,80,300,'#3a2850',2);
-    for(let i=0;i<8;i++){
-      const clrs=['#8060c0','#c06080','#4080c0','#80c060'];
-      rect(55,130+i*34,70,28,clrs[i%4]+'44');
-      border(55,130+i*34,70,28,clrs[i%4],1);
-    }
-    // window with night view
-    rect(620,100,130,200,'#0d1020'); border(620,100,130,200,'#4a3060',2);
-    rect(630,110,110,180,'rgba(80,80,180,0.2)');
-    // rug
-    rect(230,380,340,60,'rgba(120,80,160,0.3)');
-    // NPC: kanka
-    _drawNpcKanka(500, 130);
-  }
 
-  function _sceneMagaram(){
-    // Home bedroom/kitchen — used for cutscenes too
-    rect(0,0,W,H,'#0a0e14');
-    // walls
-    rect(0,0,W,H,'#0e1220');
-    // floor
-    rect(0,460,W,H,'#141020');
-    for(let x=0;x<W;x+=80){ rect(x,460,1,H,'rgba(80,60,120,0.15)'); }
-    // bed
-    rect(80,200,200,180,'#1a1428'); border(80,200,200,180,'#3a2a48',2);
-    rect(90,200,180,50,'#ffffff11'); // pillow
-    rect(80,200,200,12,'#2a2040');   // headboard
-    // lamp
-    rect(60,150,16,50,'#888'); rect(50,140,36,16,'#ffe0a0');
-    rect(48,146,40,4,'rgba(255,200,80,0.4)');
-    // window night
-    rect(560,80,180,220,'#0d1525'); border(560,80,180,220,'#3a3060',2);
-    rect(644,80,4,220,'#3a3060'); rect(560,184,180,4,'#3a3060');
-    // stars through window
-    [[580,100],[610,130],[660,95],[700,140],[720,110]].forEach(([x,y])=>{ px(x,y,2,'rgba(255,255,255,0.7)'); });
-    // desk
-    rect(600,340,180,20,'#2a2040'); rect(600,360,180,H,'#1e1830');
-    rect(680,280,20,60,'#888'); rect(670,270,40,14,'#ffe0a0'); // desk lamp
-    // poster on wall
-    rect(280,60,120,140,'#1a1428'); border(280,60,120,140,'#4a3060',2);
-    rect(290,70,100,120,'#201838');
-    neonRect(280,60,120,140,'#c060ff',8);
-  }
-
-  // ── NPC portraits (pixel art, large) ──────────────────────
-
-  function _drawNpcEx(x, y){
-    // Female figure, emotional. ~200x320
-    const s = 3; // pixel scale
-    function p(ax,ay,aw,ah,c){ rect(x+ax*s,y+ay*s,aw*s,ah*s,c); }
-
-    // body / dress (purple)
-    p(10,48,40,70,'#5a1a4a');
-    p(8,60,44,58,'#4a1040');
-    // arms
-    p(2,50,10,40,'#f0b890'); p(48,50,10,40,'#f0b890');
-    // neck
-    p(22,42,16,8,'#f0b890');
-    // head
-    p(14,10,32,34,'#f0b890');
-    // hair (long, dark)
-    p(10,8,40,6,'#1a0a14');
-    p(8,14,6,40,'#1a0a14');  // left side
-    p(46,14,6,40,'#1a0a14'); // right side
-    p(12,48,36,20,'#1a0a14'); // back hair
-    // eyes (sad)
-    p(18,22,6,4,'#fff');  p(36,22,6,4,'#fff');
-    p(20,23,4,3,'#1a0a14'); p(38,23,4,3,'#1a0a14');
-    // teardrop hint
-    p(20,28,2,4,'rgba(150,200,255,0.7)');
-    // mouth (slight frown)
-    p(22,34,16,2,'#c08070');
-    p(20,36,4,2,'#c08070'); p(36,36,4,2,'#c08070');
-    // earrings
-    p(11,26,4,4,'#c060ff'); p(45,26,4,4,'#c060ff');
-    // subtle glow outline
-    ctx.save(); ctx.shadowColor='#c060ff'; ctx.shadowBlur=20;
-    ctx.strokeStyle='rgba(180,80,200,0.2)'; ctx.lineWidth=1;
-    ctx.strokeRect(x+8*s,y+8*s,44*s,110*s);
-    ctx.restore();
-  }
-
-  function _drawNpcBarista(x, y){
-    // Barista with apron, friendly
-    const s = 3;
-    function p(ax,ay,aw,ah,c){ rect(x+ax*s,y+ay*s,aw*s,ah*s,c); }
-
-    // body
-    p(8,44,40,70,'#e0e0e0'); // shirt (white)
-    p(14,44,28,70,'#e06030'); // apron
-    // apron strings
-    p(10,50,4,30,'#e06030'); p(46,50,4,30,'#e06030');
-    // arms
-    p(2,46,8,42,'#f5c090'); p(50,46,8,42,'#f5c090');
-    // neck
-    p(22,38,16,8,'#f5c090');
-    // head
-    p(16,8,28,32,'#f5c090');
-    // hair (short, dark)
-    p(14,6,32,8,'#2a1808');
-    p(14,8,6,16,'#2a1808');
-    p(40,8,6,16,'#2a1808');
-    // eyes (friendly)
-    p(20,18,5,5,'#fff'); p(35,18,5,5,'#fff');
-    p(21,19,3,3,'#1a0a00'); p(36,19,3,3,'#1a0a00');
-    // smile
-    p(20,30,4,2,'#c08060'); p(36,30,4,2,'#c08060');
-    p(24,32,12,2,'#c08060');
-    // apron pocket
-    p(20,65,20,15,'#c05020'); border(x+20*s,y+65*s,20*s,15*s,'#a04010',1);
-    // text on apron (tiny)
-    ctx.fillStyle='#fff'; ctx.font="6px monospace"; ctx.textAlign='center';
-    ctx.fillText('CXP', x+30*s, y+75*s);
-  }
-
-  function _drawNpcBartender(x, y){
-    // Gruff bartender, dark palette
-    const s = 3;
-    function p(ax,ay,aw,ah,c){ rect(x+ax*s,y+ay*s,aw*s,ah*s,c); }
-
-    // body (dark shirt)
-    p(6,44,46,75,'#1a1a1a');
-    // rolled sleeves
-    p(1,46,7,36,'#2a1a0a'); p(50,46,7,36,'#2a1a0a');
-    // arms
-    p(2,48,6,40,'#c07850'); p(51,48,6,40,'#c07850');
-    // neck
-    p(22,38,16,8,'#c07850');
-    // head (larger, rough)
-    p(12,8,36,32,'#c07850');
-    // stubble
-    for(let i=0;i<5;i++) for(let j=0;j<3;j++){
-      p(14+i*5,28+j*2,1,1,'rgba(80,40,20,0.6)');
-    }
-    // hair (very short/shaved sides)
-    p(12,6,36,6,'#1a0e06');
-    p(12,8,4,10,'#1a0e06'); p(44,8,4,10,'#1a0e06');
-    // eyes (tired but sharp)
-    p(18,18,6,4,'#fff'); p(36,18,6,4,'#fff');
-    p(20,19,4,3,'#1a0a00'); p(38,19,4,3,'#1a0a00');
-    p(17,17,8,2,'#2a1808'); p(35,17,8,2,'#2a1808'); // brows
-    // mouth (neutral)
-    p(20,30,20,2,'#a06040');
-    // towel over shoulder
-    p(2,44,10,30,'#e0e0e0'); p(3,44,8,30,'#c0c0c0');
-    for(let i=0;i<4;i++) rect(x+3*s, y+(50+i*6)*s, 8*s, 2*s, 'rgba(0,0,0,0.15)');
-  }
-
-  function _drawNpcKanka(x, y){
-    // Best friend, casual and warm
-    const s = 3;
-    function p(ax,ay,aw,ah,c){ rect(x+ax*s,y+ay*s,aw*s,ah*s,c); }
-
-    // body (hoodie)
-    p(8,44,44,72,'#2a4a7a');
-    p(10,44,40,72,'#1e3a6a');
-    // hood detail
-    p(6,38,48,12,'#2a4a7a');
-    // arms
-    p(2,46,8,42,'#2a4a7a'); p(50,46,8,42,'#2a4a7a');
-    // hands
-    p(2,82,8,8,'#f5c090'); p(50,82,8,8,'#f5c090');
-    // neck
-    p(22,38,16,8,'#f5c090');
-    // head
-    p(14,8,32,32,'#f5c090');
-    // hair (messy)
-    p(12,6,36,8,'#1a0e02');
-    p(12,8,5,12,'#1a0e02'); p(43,8,5,12,'#1a0e02');
-    p(16,4,6,6,'#240e02'); p(28,2,8,6,'#240e02'); p(38,6,6,4,'#240e02');
-    // eyes (relaxed, friendly)
-    p(18,18,6,4,'#fff'); p(36,18,6,4,'#fff');
-    p(20,19,3,3,'#1a0a00'); p(38,19,3,3,'#1a0a00');
-    p(18,22,3,1,'#f5c090'); p(36,22,3,1,'#f5c090'); // lower lid
-    // smile
-    p(20,30,4,2,'#c07050'); p(36,30,4,2,'#c07050');
-    p(24,32,12,2,'#c07050');
-    // hoodie pocket
-    p(18,72,24,16,'#1e3a6a'); border(x+18*s,y+72*s,24*s,16*s,'#2a4a7a',1);
-    // phone in hand hint
-    rect(x+52*s, y+70*s, 12, 20, '#1a1a1a');
-    border(x+52*s, y+70*s, 12, 20, '#444', 1);
-    rect(x+53*s, y+72*s, 10, 14, '#2a3a5a');
-  }
-
-  // Player head silhouette (bottom of screen, over-the-shoulder)
-  function _drawPlayerHead(){
+    // Ambient pink light
     ctx.save();
-    // head shape
-    const hx = 180, hy = H + 30; // slightly off-screen bottom
-    const gradient = ctx.createRadialGradient(hx, hy-20, 0, hx, hy, 120);
-    gradient.addColorStop(0,'rgba(20,12,30,1)');
-    gradient.addColorStop(1,'rgba(10,6,20,0)');
-    ctx.fillStyle = gradient;
+    ctx.globalAlpha = 0.15;
+    const pinkGrd = ctx.createRadialGradient(0, 300, 10, 0, 300, 220);
+    pinkGrd.addColorStop(0, '#ff80c0'); pinkGrd.addColorStop(1, 'transparent');
+    ctx.fillStyle = pinkGrd; ctx.fillRect(0, 100, 350, 400);
+    ctx.restore();
+
+    // NPC Devin
+    _drawNPCDevin(520, 190);
+  }
+
+  function _drawNPCDevin(x, y) {
+    fillRect(x - 30, y + 80, 60, 130, '#4a1a5a');
+    fillRect(x - 8, y + 68, 16, 20, '#c07080');
+    circle(x, y + 50, 36, '#c07080');
+    // Long dark hair
+    fillRect(x - 34, y + 18, 68, 96, '#1a0a1a');
+    fillRect(x - 40, y + 28, 14, 76, '#1a0a1a');
+    fillRect(x + 26, y + 28, 14, 76, '#1a0a1a');
+    // Face
+    circle(x, y + 50, 29, '#c07080');
+    // Sad eyes
+    ctx.fillStyle = '#2a1040';
+    ctx.beginPath(); ctx.ellipse(x - 10, y + 44, 5, 4, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 10, y + 44, 5, 4, 0.2, 0, Math.PI * 2); ctx.fill();
+    // Tear
+    ctx.fillStyle = '#aaddff';
+    ctx.beginPath(); ctx.ellipse(x - 10, y + 53, 2, 4, 0, 0, Math.PI * 2); ctx.fill();
+    // Sad mouth
+    ctx.strokeStyle = '#8a4050'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y + 63, 8, 0.2, Math.PI - 0.2); ctx.stroke();
+    // Earrings
+    circle(x - 36, y + 56, 4, '#cc88ff');
+    circle(x + 36, y + 56, 4, '#cc88ff');
+    circle(x - 36, y + 63, 3, '#ff88cc');
+    circle(x + 36, y + 63, 3, '#ff88cc');
+  }
+
+  function _scCoffeeland() {
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#1a1005');
+    bg.addColorStop(1, '#2a1a08');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // Wooden floor
+    for (let i = 0; i < 10; i++) {
+      fillRect(i * 80, 420, 78, H - 420, i % 2 === 0 ? '#3d2010' : '#2d1808');
+    }
+    ctx.strokeStyle = '#1a0e04'; ctx.lineWidth = 1;
+    for (let i = 0; i < 10; i++) {
+      ctx.beginPath(); ctx.moveTo(i * 80, 420); ctx.lineTo(i * 80, H); ctx.stroke();
+    }
+
+    fillRect(0, 0, W, 80, '#120c04');
+
+    // Hanging lights
+    [150, 350, 550, 700].forEach(lx => {
+      ctx.strokeStyle = '#3a2a10'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, 80); ctx.stroke();
+      ctx.save(); ctx.shadowColor = '#ffaa44'; ctx.shadowBlur = 30;
+      fillRect(lx - 12, 78, 24, 12, '#ffcc66');
+      ctx.restore();
+    });
+
+    // Window with morning light
+    fillRect(540, 80, 200, 230, '#0d0805');
+    const wLight = ctx.createLinearGradient(545, 80, 740, 310);
+    wLight.addColorStop(0, '#ffe8a0');
+    wLight.addColorStop(0.5, '#ffcc60');
+    wLight.addColorStop(1, '#ff9920');
+    ctx.fillStyle = wLight; ctx.fillRect(545, 82, 193, 226);
+    ctx.strokeStyle = '#5a3a10'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(641, 82); ctx.lineTo(641, 308); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(545, 195); ctx.lineTo(738, 195); ctx.stroke();
+
+    // Morning light ray on floor
+    ctx.save(); ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#ffcc60';
     ctx.beginPath();
-    ctx.ellipse(hx, hy, 120, 130, 0, 0, Math.PI*2);
-    ctx.fill();
-    // solid head
-    ctx.fillStyle = '#0e0a18';
+    ctx.moveTo(545, 308); ctx.lineTo(738, 308); ctx.lineTo(W, H); ctx.lineTo(380, H);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // Wooden counter
+    fillRect(20, 310, 440, 140, '#5a3010');
+    fillRect(20, 308, 440, 12, '#7a4a20');
+    fillRect(20, 308, 8, 142, '#7a4a20');
+    fillRect(452, 308, 8, 142, '#7a4a20');
+    fillRect(14, 304, 450, 8, '#8b5a24');
+
+    // Display shelf
+    fillRect(30, 150, 220, 8, '#5a3010');
+    fillRect(30, 192, 220, 8, '#5a3010');
+    fillRect(30, 234, 220, 8, '#5a3010');
+    // Bottles
+    ['#8b0000', '#004488', '#006600', '#884400', '#440088'].forEach((bc, i) => {
+      const bx = 44 + i * 40;
+      fillRect(bx, 158, 12, 34, bc);
+      fillRect(bx + 3, 153, 6, 6, bc);
+      circle(bx + 6, 152, 3, '#ccc');
+    });
+
+    // Coffee machine
+    fillRect(100, 230, 70, 80, '#2a2a2a');
+    fillRect(106, 236, 58, 34, '#1a1a1a');
+    fillRect(112, 242, 46, 22, '#333');
+    // Steam
+    ctx.strokeStyle = '#aaaaaa'; ctx.lineWidth = 2;
+    for (let s = 0; s < 3; s++) {
+      ctx.globalAlpha = 0.5 - s * 0.1;
+      ctx.beginPath();
+      ctx.moveTo(120 + s * 12, 230);
+      ctx.bezierCurveTo(115 + s * 12, 215, 128 + s * 12, 205, 122 + s * 12, 190);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // NPC Barista
+    _drawNPCBarista(580, 240);
+  }
+
+  function _drawNPCBarista(x, y) {
+    fillRect(x - 32, y + 75, 64, 120, '#5a3a20');
+    fillRect(x - 28, y + 72, 56, 124, '#ffffff');
+    fillRect(x - 20, y + 72, 40, 124, '#e8e8e8');
+    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 20, y + 72); ctx.lineTo(x - 32, y + 84); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 20, y + 72); ctx.lineTo(x + 32, y + 84); ctx.stroke();
+    fillRect(x - 8, y + 62, 16, 18, '#d09060');
+    circle(x, y + 44, 34, '#d09060');
+    ctx.fillStyle = '#2a1a0a';
+    ctx.beginPath(); ctx.ellipse(x, y + 13, 34, 22, 0, 0, Math.PI * 2); ctx.fill();
+    fillRect(x - 34, y + 12, 68, 30, '#2a1a0a');
+    circle(x, y + 44, 28, '#d09060');
+    // Eyes
+    ctx.fillStyle = '#1a0a0a';
+    ctx.beginPath(); ctx.ellipse(x - 9, y + 40, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 9, y + 40, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // Smile
+    ctx.strokeStyle = '#8a5030'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y + 54, 9, Math.PI + 0.3, Math.PI * 2 - 0.3); ctx.stroke();
+    // Blush
+    ctx.globalAlpha = 0.3; ctx.fillStyle = '#ff8888';
+    ctx.beginPath(); ctx.ellipse(x - 18, y + 52, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 18, y + 52, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function _scBar() {
+    fillRect(0, 0, W, H, '#0a0806');
+
+    // Stone walls
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 12; col++) {
+        fillRect(col * 68, row * 80, 66, 78, (row + col) % 2 === 0 ? '#111008' : '#0d0d06');
+      }
+    }
+
+    // Dark floor
+    for (let i = 0; i < 8; i++) {
+      fillRect(i * 100, 420, 99, H - 420, i % 2 === 0 ? '#1a1208' : '#141006');
+    }
+
+    // Bar counter
+    fillRect(0, 270, 360, 180, '#1a1005');
+    fillRect(0, 267, 365, 10, '#3a2810');
+    // Stools
+    [60, 150, 240, 320].forEach(sx => {
+      fillRect(sx - 14, 428, 28, 10, '#3a2810');
+      fillRect(sx - 2, 438, 4, 32, '#2a2010');
+      circle(sx, 472, 8, '#1a1008');
+    });
+    // Glasses
+    [40, 100, 160, 210, 270].forEach(gx => {
+      fillRect(gx, 256, 12, 14, '#334455');
+      fillRect(gx + 2, 257, 8, 12, '#445566');
+    });
+    // Beer tap
+    fillRect(180, 195, 8, 75, '#3a3020');
+    fillRect(175, 190, 18, 10, '#5a4a20');
+    circle(179, 194, 4, '#cc8800');
+
+    // Neon signs
+    drawNeon('BIRA', 400, 100, '#ff4400', 12, '#ff2200');
+    drawNeon('KOKTEYLLER', 390, 145, '#ff00aa', 9, '#ff0088');
+
+    // Pool table
+    fillRect(420, 310, 170, 110, '#005500');
+    strokeRect(420, 310, 170, 110, '#2a1a00', 6);
+    [450, 480, 510, 540, 570].forEach(px => { circle(px, 365, 7, '#cc0000'); });
+    circle(570, 365, 7, '#ffffff');
+    ctx.strokeStyle = '#8b6010'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(370, 405); ctx.lineTo(570, 363); ctx.stroke();
+
+    _drawNPCBartender(290, 185);
+  }
+
+  function _drawNPCBartender(x, y) {
+    fillRect(x - 28, y + 80, 56, 120, '#1a1a1a');
+    fillRect(x + 14, y + 80, 20, 42, '#ddd');
+    fillRect(x + 16, y + 82, 16, 38, '#f5f5f5');
+    fillRect(x - 8, y + 65, 16, 22, '#b07050');
+    ctx.fillStyle = '#b07050';
+    ctx.beginPath(); ctx.ellipse(x, y + 48, 35, 40, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.4; ctx.fillStyle = '#5a3020';
+    ctx.beginPath(); ctx.ellipse(x, y + 64, 24, 15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#2a1a0a';
+    ctx.beginPath(); ctx.ellipse(x, y + 13, 36, 24, 0, 0, Math.PI * 2); ctx.fill();
+    fillRect(x - 36, y + 14, 72, 22, '#2a1a0a');
+    ctx.fillStyle = '#b07050';
+    ctx.beginPath(); ctx.ellipse(x, y + 48, 29, 32, 0, 0, Math.PI * 2); ctx.fill();
+    fillRect(x - 22, y + 32, 18, 4, '#2a1a0a');
+    fillRect(x + 4, y + 32, 18, 4, '#2a1a0a');
+    ctx.fillStyle = '#1a0a0a';
+    ctx.beginPath(); ctx.ellipse(x - 13, y + 42, 4, 5, 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 13, y + 42, 4, 5, -0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#8a5030'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 10, y + 60); ctx.lineTo(x + 10, y + 60); ctx.stroke();
+  }
+
+  function _scKanka() {
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0d1018');
+    bg.addColorStop(1, '#1a2030');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // Floor
+    for (let i = 0; i < 8; i++) {
+      fillRect(i * 100, 430, 99, H - 430, i % 2 === 0 ? '#1a2428' : '#151e22');
+    }
+    // Rug
+    fillRect(100, 430, 420, 110, '#4a1a1a');
+    fillRect(108, 438, 404, 94, '#3a1414');
+    ctx.strokeStyle = '#6a2a2a'; ctx.lineWidth = 2;
+    ctx.strokeRect(118, 446, 384, 78);
+    ctx.strokeRect(132, 454, 356, 62);
+
+    // Sofa
+    fillRect(90, 370, 300, 90, '#2a3a4a');
+    fillRect(90, 367, 300, 12, '#3a4a5a');
+    fillRect(90, 370, 22, 90, '#3a4a5a');
+    fillRect(368, 370, 22, 90, '#3a4a5a');
+    [120, 178, 236, 298].forEach(cx => {
+      fillRect(cx, 378, 48, 50, '#5a2a4a');
+      fillRect(cx + 3, 381, 42, 44, '#6a3a5a');
+    });
+
+    // Bookshelves
+    fillRect(560, 80, 200, 380, '#2a1a08');
+    for (let shelf = 0; shelf < 7; shelf++) {
+      fillRect(560, 80 + shelf * 54, 200, 5, '#3a2a12');
+      let bookX = 564;
+      while (bookX < 752) {
+        const bw = 8 + Math.floor((bookX * 7 + shelf * 13) % 12);
+        const bh = 28 + (bookX + shelf) % 18;
+        fillRect(bookX, 80 + shelf * 54 + 5 - bh + 46, bw, bh, `hsl(${(bookX * 3 + shelf * 47) % 360},50%,28%)`);
+        bookX += bw + 1;
+      }
+    }
+
+    // TV (off)
+    fillRect(180, 110, 300, 200, '#0a0a0a');
+    fillRect(186, 116, 288, 188, '#0d0d14');
+    fillRect(192, 122, 276, 176, '#050508');
+    fillRect(270, 308, 120, 22, '#1a1a28');
+    fillRect(296, 328, 68, 8, '#1a1a28');
+
+    // Window (night view)
+    fillRect(0, 70, 150, 240, '#0d1018');
+    fillRect(5, 76, 140, 228, '#05080f');
+    ctx.fillStyle = '#05080f'; ctx.fillRect(6, 77, 138, 226);
+    for (let ws = 0; ws < 25; ws++) {
+      circle(12 + (ws * 37) % 128, 82 + (ws * 19) % 214, 1, '#fff');
+    }
+    ctx.strokeStyle = '#2a2a3a'; ctx.lineWidth = 4;
+    ctx.strokeRect(3, 73, 146, 234);
+    ctx.beginPath(); ctx.moveTo(76, 73); ctx.lineTo(76, 307); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(3, 190); ctx.lineTo(149, 190); ctx.stroke();
+
+    _drawNPCKanka(570, 220);
+  }
+
+  function _drawNPCKanka(x, y) {
+    ctx.fillStyle = '#2a3a50';
     ctx.beginPath();
-    ctx.ellipse(hx, hy+10, 75, 90, 0, 0, Math.PI*2);
+    if (ctx.roundRect) {
+      ctx.roundRect(x - 36, y + 82, 72, 130, 8);
+    } else {
+      ctx.rect(x - 36, y + 82, 72, 130);
+    }
     ctx.fill();
-    // hair highlight
-    ctx.fillStyle = '#2a1e3a';
-    ctx.beginPath();
-    ctx.ellipse(hx-10, hy-65, 30, 20, -0.3, 0, Math.PI*2);
-    ctx.fill();
+    fillRect(x - 22, y + 152, 44, 24, '#22304a');
+    // Phone in hand
+    fillRect(x + 22, y + 120, 24, 40, '#0a0a10');
+    fillRect(x + 24, y + 122, 20, 36, '#1a2a40');
+    ctx.save(); ctx.shadowColor = '#4488ff'; ctx.shadowBlur = 10;
+    fillRect(x + 25, y + 124, 18, 32, '#0a1a30');
+    ctx.restore();
+    fillRect(x - 8, y + 67, 16, 20, '#c09060');
+    circle(x, y + 46, 33, '#c09060');
+    ctx.fillStyle = '#1a1208';
+    ctx.beginPath(); ctx.ellipse(x, y + 18, 35, 26, 0, 0, Math.PI * 2); ctx.fill();
+    fillRect(x - 35, y + 12, 70, 30, '#1a1208');
+    for (let sp = 0; sp < 5; sp++) {
+      ctx.fillStyle = '#1a1208';
+      ctx.beginPath();
+      ctx.moveTo(x - 32 + sp * 18, y + 12);
+      ctx.lineTo(x - 24 + sp * 18, y - 2);
+      ctx.lineTo(x - 14 + sp * 18, y + 12);
+      ctx.fill();
+    }
+    circle(x, y + 46, 27, '#c09060');
+    ctx.fillStyle = '#1a0a0a';
+    ctx.beginPath(); ctx.ellipse(x - 9, y + 41, 4, 5, -0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + 9, y + 41, 4, 5, 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#8a5030'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y + 54, 8, Math.PI + 0.5, Math.PI * 2 - 0.5); ctx.stroke();
+  }
+
+  function _scMagaram() {
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0f0a18');
+    bg.addColorStop(1, '#1a1428');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    for (let i = 0; i < 10; i++) {
+      fillRect(i * 80, 430, 79, H - 430, i % 2 === 0 ? '#1a1428' : '#14102a');
+    }
+
+    // Bed
+    fillRect(460, 290, 300, 190, '#3a2850');
+    fillRect(460, 288, 300, 32, '#5a3a70');
+    fillRect(470, 320, 280, 158, '#e8d8f0');
+    fillRect(488, 322, 110, 55, '#ffffff');
+    fillRect(622, 322, 90, 55, '#f5f5f5');
+
+    // Kitchen counter
+    fillRect(0, 300, 380, 180, '#2a1a08');
+    fillRect(0, 296, 386, 12, '#4a2a12');
+    // Sink
+    fillRect(30, 278, 80, 22, '#3a3a4a');
+    fillRect(34, 280, 72, 18, '#2a2a3a');
+    circle(70, 273, 5, '#6a6a8a');
+    // Moka pot
+    _drawMokaPot(190, 240, 1.0);
+
+    // Night window
+    fillRect(600, 70, 160, 160, '#0a0a14');
+    for (let ws = 0; ws < 15; ws++) {
+      circle(612 + (ws * 23) % 142, 80 + (ws * 17) % 144, 1, '#ffffcc');
+    }
+    ctx.strokeStyle = '#3a2855'; ctx.lineWidth = 4;
+    ctx.strokeRect(598, 68, 164, 164);
+    ctx.beginPath(); ctx.moveTo(680, 68); ctx.lineTo(680, 232); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(598, 150); ctx.lineTo(762, 150); ctx.stroke();
+
+    // Purple lamp
+    fillRect(420, 190, 6, 110, '#3a2855');
+    fillRect(394, 184, 58, 10, '#5a3a7a');
+    ctx.save(); ctx.shadowColor = '#aa44cc'; ctx.shadowBlur = 40;
+    fillRect(396, 194, 52, 6, '#cc88ff');
     ctx.restore();
   }
 
-  // ══════════════════════════════════════════════════════════
-  //  CUTSCENE SPECIFIC
-  // ══════════════════════════════════════════════════════════
-  function drawCutsceneCloseup(t){
-    // Scene 1: close-up waking
-    rect(0,0,W,H,'#050510');
-    // Pillow/ceiling view — blurred room
-    rect(0,H*0.6,W,H*0.4,'#0a0818');
-    rect(0,H*0.58,W,8,'#141028');
-    // ceiling texture
-    for(let x=0;x<W;x+=60) rect(x,0,1,H*0.6,'rgba(80,60,120,0.05)');
-    for(let y=0;y<H*0.6;y+=60) rect(0,y,W,1,'rgba(80,60,120,0.05)');
-    // light fixture
-    rect(W/2-30,0,60,20,'#ffe0a0'); rect(W/2-20,20,40,30,'rgba(255,200,80,0.1)');
-    ctx.save(); ctx.shadowColor='#ffe0a0'; ctx.shadowBlur=30;
-    rect(W/2-30,0,60,20,'#ffe0a0'); ctx.restore();
-    // eye-opening vignette (based on t: 0=closed, 1=open)
-    const vH = (H/2)*(1-Math.min(t,1));
-    rect(0,0,W,vH,'#000');
-    rect(0,H-vH,W,vH,'#000');
-    // inner glow (eyes adjusting)
-    if(t > 0.5){
-      ctx.save(); ctx.globalAlpha = (t-0.5)*2*0.3;
-      ctx.fillStyle='rgba(255,220,180,0.15)'; ctx.fillRect(0,vH,W,H-vH*2);
+  // ── Memory / Flashback scenes ──────────────────────────────────────────────
+
+  function drawMemoryScene(id) {
+    switch (id) {
+      case 'coffee_argument': _memCoffeeArgument(); break;
+      case 'phone_message':   _memPhoneMessage(); break;
+      case 'bar_night':       _memBarNight(); break;
+      case 'ex_memory':       _memExMemory(); break;
+      default: fillRect(0, 0, W, H, '#1a1a20');
+    }
+  }
+
+  function _memVignette() {
+    const vig = ctx.createRadialGradient(W / 2, H / 2, 100, W / 2, H / 2, 500);
+    vig.addColorStop(0, 'transparent');
+    vig.addColorStop(1, 'rgba(0,0,0,0.75)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function _applySepiaOverlay() {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#6a5020';
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#c8a050';
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  function _memCoffeeArgument() {
+    fillRect(0, 0, W, H, '#3d2a10');
+    fillRect(0, 390, W, H - 390, '#2a1808');
+    fillRect(0, 0, W, 80, '#1a0e04');
+
+    // Window
+    fillRect(570, 80, 170, 200, '#5a4020');
+    fillRect(576, 86, 158, 188, '#8a6030');
+
+    // Table
+    fillRect(280, 320, 240, 14, '#4a3010');
+    fillRect(300, 333, 8, 90, '#3a2808');
+    fillRect(500, 333, 8, 90, '#3a2808');
+
+    // Two silhouettes facing each other
+    ctx.fillStyle = '#0a0806';
+    ctx.beginPath(); ctx.ellipse(285, 272, 23, 28, 0.15, 0, Math.PI * 2); ctx.fill();
+    fillRect(262, 296, 46, 72, '#0a0806');
+    fillRect(268, 318, 44, 8, '#0a0806');
+
+    ctx.fillStyle = '#0d0a08';
+    ctx.beginPath(); ctx.ellipse(518, 270, 23, 28, -0.15, 0, Math.PI * 2); ctx.fill();
+    fillRect(495, 294, 46, 74, '#0d0a08');
+    fillRect(498, 306, 52, 10, '#0d0a08');
+    fillRect(502, 318, 48, 10, '#0d0a08');
+
+    [324, 472].forEach(cx => {
+      fillRect(cx - 6, 314, 12, 10, '#6a4010');
+      fillRect(cx - 8, 322, 16, 3, '#5a3008');
+    });
+
+    _applySepiaOverlay();
+    _memVignette();
+
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = '#f0e0b0';
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.fillText('ANISINDA... COFFEELAND, DÜN GECE', 20, 558);
+    ctx.restore();
+  }
+
+  function _memPhoneMessage() {
+    fillRect(0, 0, W, H, '#050508');
+
+    ctx.save();
+    ctx.shadowColor = '#4488ff'; ctx.shadowBlur = 80; ctx.globalAlpha = 0.3;
+    circle(W / 2, H / 2, 120, '#4488ff');
+    ctx.restore();
+
+    const px = W / 2 - 95, py = H / 2 - 170;
+    ctx.save();
+    ctx.shadowColor = '#2255aa'; ctx.shadowBlur = 30;
+    fillRect(px, py, 190, 340, '#0a0a12');
+    ctx.restore();
+    fillRect(px + 2, py + 2, 186, 336, '#111120');
+    fillRect(px + 76, py + 4, 38, 8, '#0a0a14');
+    circle(px + 95, py + 8, 4, '#0d0d18');
+
+    ctx.save();
+    ctx.shadowColor = '#3366cc'; ctx.shadowBlur = 20;
+    fillRect(px + 8, py + 22, 174, 296, '#0a1428');
+    ctx.restore();
+
+    // Notification glow
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    const notifGrd = ctx.createRadialGradient(W / 2, H / 2, 20, W / 2, H / 2, 190);
+    notifGrd.addColorStop(0, '#4488ff'); notifGrd.addColorStop(1, 'transparent');
+    ctx.fillStyle = notifGrd; ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    // Message bubble
+    ctx.fillStyle = '#1e3050';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(px + 12, py + 78, 162, 120, 14);
+    } else {
+      ctx.rect(px + 12, py + 78, 162, 120);
+    }
+    ctx.fill();
+
+    ctx.fillStyle = '#e0eeff';
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.fillText('Çok garip bir', px + 20, py + 108);
+    ctx.fillText('geceydi.', px + 20, py + 124);
+    ctx.fillText('Teşekkür ederim', px + 20, py + 146);
+    ctx.fillText('yine de.', px + 20, py + 162);
+
+    ctx.fillStyle = '#8899bb';
+    ctx.font = '7px "Press Start 2P", monospace';
+    ctx.fillText('—D', px + 124, py + 184);
+
+    ctx.fillStyle = '#445566';
+    ctx.font = '6px "Press Start 2P", monospace';
+    ctx.fillText('03:47', px + 114, py + 204);
+
+    _memVignette();
+
+    ctx.fillStyle = '#8899bb';
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.fillText('ANISINDA... BİR MESAJ', 20, 558);
+  }
+
+  function _memBarNight() {
+    fillRect(0, 0, W, H, '#1a1208');
+
+    // Crowd silhouettes
+    for (let i = 0; i < 18; i++) {
+      const cx = 30 + i * 44;
+      const cy = 280 + (i % 3) * 20;
+      const ch = 120 + (i % 4) * 20;
+      ctx.fillStyle = i % 2 === 0 ? '#0a0806' : '#0d0a06';
+      ctx.beginPath(); ctx.ellipse(cx, cy - ch + 20, 14, 17, 0, 0, Math.PI * 2); ctx.fill();
+      fillRect(cx - 16, cy - ch + 36, 32, ch, i % 2 === 0 ? '#0a0806' : '#0d0a06');
+    }
+
+    fillRect(0, 310, 310, 140, '#120e04');
+    fillRect(0, 307, 315, 8, '#2a2010');
+
+    drawNeon('MAUN SANDIK', 340, 80, '#ff8800', 10, '#ff6600');
+
+    // Spotlight on figure
+    const figX = 488, figY = 258;
+    ctx.save();
+    ctx.globalAlpha = 0.38;
+    const spot = ctx.createRadialGradient(figX, 80, 10, figX, figY, 110);
+    spot.addColorStop(0, '#ffee88'); spot.addColorStop(1, 'transparent');
+    ctx.fillStyle = spot; ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    // Table
+    fillRect(428, 330, 120, 12, '#2a1a05');
+    fillRect(438, 342, 6, 58, '#1a0e04');
+    fillRect(532, 342, 6, 58, '#1a0e04');
+
+    // Figure on table — arms UP
+    ctx.fillStyle = '#0a0806';
+    ctx.beginPath(); ctx.arc(figX, figY - 54, 19, 0, Math.PI * 2); ctx.fill();
+    fillRect(figX - 15, figY - 36, 30, 64, '#0a0806');
+    ctx.beginPath();
+    ctx.moveTo(figX - 15, figY - 22);
+    ctx.lineTo(figX - 42, figY - 64);
+    ctx.lineTo(figX - 36, figY - 64);
+    ctx.lineTo(figX - 9, figY - 18);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(figX + 15, figY - 22);
+    ctx.lineTo(figX + 42, figY - 64);
+    ctx.lineTo(figX + 36, figY - 64);
+    ctx.lineTo(figX + 9, figY - 18);
+    ctx.fill();
+    fillRect(figX - 15, figY + 26, 12, 30, '#0a0806');
+    fillRect(figX + 3, figY + 26, 12, 30, '#0a0806');
+
+    _applySepiaOverlay();
+    _memVignette();
+
+    ctx.fillStyle = '#f0d080';
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.fillText('ANISINDA... MAUN SANDIK BAR, DÜN GECE', 20, 558);
+  }
+
+  function _memExMemory() {
+    fillRect(0, 0, W, H, '#1a0f1e');
+
+    ctx.save(); ctx.globalAlpha = 0.12;
+    fillRect(0, 0, W, H, '#ff80c0');
+    ctx.restore();
+
+    fillRect(0, 390, W, H - 390, '#150a20');
+    fillRect(0, 0, W, 80, '#100818');
+    fillRect(0, 80, 210, 330, '#1a1228');
+    fillRect(590, 80, 210, 330, '#1a1228');
+
+    // Door frame
+    fillRect(286, 90, 228, 310, '#1a0f20');
+    fillRect(294, 98, 212, 302, '#0d0815');
+    fillRect(298, 102, 204, 298, '#1a1030');
+    [0, 1].forEach(col => {
+      [0, 1].forEach(row => {
+        fillRect(308 + col * 98, 120 + row * 126, 86, 106, '#231540');
+      });
+    });
+    circle(456, 255, 6, '#c0a050');
+
+    // Two silhouettes close then apart
+    const s1x = 342, s2x = 434, sy = 218;
+    ctx.fillStyle = '#0d0815';
+    ctx.beginPath(); ctx.arc(s1x, sy - 42, 21, 0, Math.PI * 2); ctx.fill();
+    fillRect(s1x - 19, sy - 22, 38, 84, '#0d0815');
+
+    ctx.fillStyle = '#130a1e';
+    ctx.beginPath(); ctx.arc(s2x, sy - 42, 21, 0, Math.PI * 2); ctx.fill();
+    fillRect(s2x - 19, sy - 22, 38, 84, '#130a1e');
+
+    // Fading heart
+    const hx = (s1x + s2x) / 2, hy = sy - 74;
+    ctx.save();
+    ctx.globalAlpha = 0.38;
+    ctx.fillStyle = '#ff80c0';
+    ctx.shadowColor = '#ff40a0'; ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + 10);
+    ctx.bezierCurveTo(hx, hy + 2, hx - 18, hy - 16, hx - 18, hy - 4);
+    ctx.bezierCurveTo(hx - 18, hy - 22, hx, hy - 22, hx, hy - 10);
+    ctx.bezierCurveTo(hx, hy - 22, hx + 18, hy - 22, hx + 18, hy - 4);
+    ctx.bezierCurveTo(hx + 18, hy - 16, hx, hy + 2, hx, hy + 10);
+    ctx.fill();
+    ctx.restore();
+
+    _applySepiaOverlay();
+    _memVignette();
+
+    ctx.fillStyle = '#f0c0e0';
+    ctx.font = '8px "Press Start 2P", monospace';
+    ctx.fillText("ANISINDA... DEVİN'İN KAPISI", 20, 558);
+  }
+
+  // ── Cutscene ──────────────────────────────────────────────────────────────
+
+  function drawCutsceneCloseup(t) {
+    fillRect(0, 0, W, H, '#0a0810');
+
+    // Lamp on ceiling
+    fillRect(W / 2 - 3, 0, 6, 88, '#1a1428');
+    fillRect(W / 2 - 22, 88, 44, 22, '#2a1a3a');
+    ctx.save();
+    ctx.shadowColor = '#ccaaff'; ctx.shadowBlur = 60; ctx.globalAlpha = 0.5 * t;
+    fillRect(W / 2 - 20, 90, 40, 18, '#ccaaff');
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.3 * t;
+    const lampGrd = ctx.createRadialGradient(W / 2, 99, 5, W / 2, 99, 210);
+    lampGrd.addColorStop(0, '#ccaaff'); lampGrd.addColorStop(1, 'transparent');
+    ctx.fillStyle = lampGrd; ctx.fillRect(0, 0, W, 320);
+    ctx.restore();
+
+    // Eyelid animation
+    const eyeOpen = t;
+    const lidH = H / 2 * (1 - eyeOpen);
+
+    fillRect(0, 0, W, Math.max(0, H / 2 - lidH), '#0a0810');
+    fillRect(0, H / 2 + lidH, W, Math.max(0, H / 2 - lidH), '#0a0810');
+
+    if (lidH < H / 2) {
+      const skinTop = H / 2 - lidH;
+      const skinBot = H / 2 + lidH;
+      fillRect(0, skinTop, W, 6, '#c09060');
+      fillRect(0, skinBot - 6, W, 6, '#c09060');
+      ctx.strokeStyle = '#1a1010'; ctx.lineWidth = 2;
+      for (let l = 0; l < 16; l++) {
+        ctx.beginPath();
+        ctx.moveTo(50 + l * 45, skinTop + 3);
+        ctx.lineTo(44 + l * 45 + (l % 3 - 1) * 4, skinTop - 8);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawCutsceneKitchen(zoomT) {
+    fillRect(0, 0, W, H, '#0f0a18');
+
+    fillRect(0, 0, W, 340, '#1a1428');
+    fillRect(0, 340, W, H - 340, '#14102a');
+
+    // Window with morning light
+    fillRect(500, 40, 200, 190, '#0d0810');
+    const morningLight = ctx.createLinearGradient(505, 40, 700, 230);
+    morningLight.addColorStop(0, '#ffe8a0');
+    morningLight.addColorStop(0.5, '#ffcc60');
+    morningLight.addColorStop(1, '#ff8820');
+    ctx.fillStyle = morningLight; ctx.fillRect(505, 42, 193, 186);
+    ctx.strokeStyle = '#2a1a38'; ctx.lineWidth = 4;
+    ctx.strokeRect(498, 38, 204, 194);
+    ctx.beginPath(); ctx.moveTo(600, 38); ctx.lineTo(600, 232); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(498, 135); ctx.lineTo(702, 135); ctx.stroke();
+
+    ctx.save(); ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#ffcc60';
+    ctx.beginPath();
+    ctx.moveTo(498, 232); ctx.lineTo(702, 232); ctx.lineTo(W, H); ctx.lineTo(350, H);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // Kitchen counter
+    fillRect(0, 295, W, 55, '#2a1a08');
+    fillRect(0, 292, W, 8, '#4a2a12');
+
+    // Moka pot
+    _drawMokaPot(W / 2 - 30, 215, 1.5);
+
+    // Player silhouette from behind
+    const psx = W / 2, psy = H - 90;
+    ctx.fillStyle = '#0a0810';
+    ctx.beginPath();
+    ctx.moveTo(psx - 32, H);
+    ctx.lineTo(psx - 38, psy + 22);
+    ctx.lineTo(psx - 30, psy);
+    ctx.lineTo(psx, psy - 22);
+    ctx.lineTo(psx + 30, psy);
+    ctx.lineTo(psx + 38, psy + 22);
+    ctx.lineTo(psx + 32, H);
+    ctx.closePath(); ctx.fill();
+    circle(psx, psy - 44, 30, '#0a0810');
+    fillRect(psx - 30, psy - 68, 60, 22, '#0a0810');
+
+    // Face close-up overlay
+    if (zoomT > 0.5) {
+      const faceAlpha = Math.min(1, (zoomT - 0.5) * 2);
+      ctx.save();
+      ctx.globalAlpha = faceAlpha;
+      fillRect(0, 0, W, H, '#0a0810');
+
+      const fx = W / 2, fy = H / 2 - 20;
+      circle(fx, fy, 82, '#c09060');
+      ctx.fillStyle = '#1a1208';
+      ctx.beginPath(); ctx.ellipse(fx, fy - 58, 86, 52, 0, 0, Math.PI * 2); ctx.fill();
+      fillRect(fx - 86, fy - 62, 172, 62, '#1a1208');
+      circle(fx, fy, 74, '#c09060');
+      // Sleepy eyes
+      ctx.fillStyle = '#1a0a0a';
+      ctx.beginPath(); ctx.ellipse(fx - 23, fy - 12, 15, 7, 0.1, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(fx + 23, fy - 12, 15, 7, -0.1, 0, Math.PI * 2); ctx.fill();
+      // Tired mouth
+      ctx.strokeStyle = '#8a5030'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(fx, fy + 30, 13, 0.1, Math.PI - 0.1); ctx.stroke();
       ctx.restore();
     }
   }
 
-  function drawCutsceneKitchen(zoomT){
-    // Scene 2: kitchen
-    rect(0,0,W,H,'#0e0c08');
-    // kitchen counter
-    rect(0,350,W,250,'#2a2010'); rect(0,350,W,16,'#3a3018');
-    border(0,350,W,16,'#5a4828',2);
-    // tiles on wall
-    for(let y=80;y<350;y+=40) for(let x=0;x<W;x+=40){
-      rect(x+1,y+1,38,38,'#1a1810'); border(x+1,y+1,38,38,'rgba(255,200,100,0.05)',1);
-    }
-    // window
-    rect(280,80,240,180,'#0d1a2a'); border(280,80,240,180,'#5a4828',3);
-    rect(290,90,220,160,'rgba(100,150,200,0.2)');
-    rect(394,80,4,180,'#5a4828'); rect(280,164,240,4,'#5a4828');
-    // morning light through window
-    ctx.save(); ctx.globalAlpha=0.15;
-    const lg=ctx.createLinearGradient(280,90,520,250);
-    lg.addColorStop(0,'#ffe0a0'); lg.addColorStop(1,'transparent');
-    ctx.fillStyle=lg; ctx.fillRect(280,90,240,220);
-    ctx.restore();
-    // coffee setup
-    rect(350,300,60,55,'#2a1808'); border(350,300,60,55,'#7a5030',2); // moka pot
-    rect(360,280,40,22,'#888');   // moka top
-    rect(340,355,80,8,'#5a3818'); // heating element
-    // steam
-    ctx.save(); ctx.globalAlpha=0.4; ctx.strokeStyle='#e0e0e0'; ctx.lineWidth=2;
-    for(let i=0;i<3;i++){
+  function _drawMokaPot(x, y, scale) {
+    scale = scale || 1;
+    const s = scale;
+    ctx.save();
+    ctx.translate(x, y);
+
+    fillRect(-12 * s, 20 * s, 24 * s, 30 * s, '#3a3a3a');
+    fillRect(-8 * s, 12 * s, 16 * s, 12 * s, '#2a2a2a');
+    fillRect(-10 * s, -18 * s, 20 * s, 32 * s, '#444');
+    ctx.fillStyle = '#3a3a3a';
+    ctx.beginPath();
+    ctx.moveTo(10 * s, -10 * s);
+    ctx.lineTo(26 * s, -24 * s);
+    ctx.lineTo(28 * s, -20 * s);
+    ctx.lineTo(12 * s, -6 * s);
+    ctx.fill();
+    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 4 * s;
+    ctx.beginPath(); ctx.arc(-16 * s, 20 * s, 12 * s, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+    circle(0, -20 * s, 4 * s, '#2a2a2a');
+
+    ctx.strokeStyle = '#cccccc'; ctx.lineWidth = 2; ctx.globalAlpha = 0.6;
+    [-4, 2, 8].forEach(sx => {
       ctx.beginPath();
-      ctx.moveTo(365+i*10, 280);
-      ctx.quadraticCurveTo(360+i*10, 260, 370+i*10, 240);
-      ctx.quadraticCurveTo(380+i*10, 220, 372+i*10, 200);
+      ctx.moveTo(sx * s, -22 * s);
+      ctx.bezierCurveTo(sx * s - 6, -36 * s, sx * s + 6, -46 * s, sx * s, -60 * s);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // ── Ending / Title ────────────────────────────────────────────────────────
+
+  function drawEnding() {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#05060f');
+    sky.addColorStop(1, '#1a1b38');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+    drawStars();
+
+    // City silhouette
+    [
+      { x: 0, y: 350, w: 80, h: 250 },
+      { x: 70, y: 290, w: 60, h: 310 },
+      { x: 120, y: 380, w: 100, h: 220 },
+      { x: 210, y: 255, w: 70, h: 345 },
+      { x: 590, y: 285, w: 90, h: 315 },
+      { x: 670, y: 350, w: 130, h: 250 },
+      { x: 690, y: 255, w: 80, h: 345 },
+    ].forEach(b => fillRect(b.x, b.y, b.w, b.h, '#0d0d1a'));
+
+    fillRect(0, 540, W, H - 540, '#0a0a14');
+
+    // Central apartment building
+    fillRect(270, 110, 260, 350, '#0d0d1a');
+
+    // THE lit window
+    const wX = 322, wY = 192;
+    ctx.save();
+    ctx.shadowColor = '#ffdd88'; ctx.shadowBlur = 50;
+    fillRect(wX, wY, 156, 120, '#1a1428');
+    const wg = ctx.createLinearGradient(wX, wY, wX + 156, wY + 120);
+    wg.addColorStop(0, '#ffe8a0'); wg.addColorStop(1, '#ffcc60');
+    ctx.fillStyle = wg; ctx.fillRect(wX + 4, wY + 4, 148, 112);
+    ctx.restore();
+    fillRect(wX + 4, wY + 4, 22, 112, '#cc6633');
+    fillRect(wX + 130, wY + 4, 22, 112, '#cc6633');
+    ctx.strokeStyle = '#3a2820'; ctx.lineWidth = 4;
+    ctx.strokeRect(wX, wY, 156, 120);
+
+    // Other windows (dark)
+    [[298, 340], [370, 340], [298, 390], [370, 390], [298, 440], [370, 440]].forEach(([wx, wy]) => {
+      fillRect(wx, wy, 50, 38, '#1a1a28');
+      fillRect(wx + 2, wy + 2, 46, 34, '#0d0d18');
+    });
+
+    // Title
+    ctx.save();
+    ctx.shadowColor = '#8855ff'; ctx.shadowBlur = 22;
+    ctx.fillStyle = '#e0d0ff';
+    ctx.font = '28px "Press Start 2P", monospace';
+    const title = 'KANKA, GEYM';
+    const tw = ctx.measureText(title).width;
+    ctx.fillText(title, W / 2 - tw / 2, 496);
+    ctx.restore();
+
+    ctx.fillStyle = '#8877aa';
+    ctx.font = '10px "Press Start 2P", monospace';
+    const sub = 'Bir gece, dört anı, sonsuz soru.';
+    const sw = ctx.measureText(sub).width;
+    ctx.fillText(sub, W / 2 - sw / 2, 524);
+  }
+
+  function drawTitle() {
+    fillRect(0, 0, W, H, '#05060a');
+    drawStars();
+
+    // Animated rain
+    ctx.strokeStyle = 'rgba(150,180,220,0.3)';
+    ctx.lineWidth = 1;
+    const now = Date.now();
+    for (let r = 0; r < 80; r++) {
+      const rx = ((r * 137 + now * 0.3) % W);
+      const ry = ((r * 73 + now * 0.8) % H);
+      ctx.beginPath();
+      ctx.moveTo(rx, ry);
+      ctx.lineTo(rx - 2, ry + 12);
       ctx.stroke();
     }
-    ctx.restore();
-    // cups / items
-    rect(450,330,35,30,'#1a1210'); rect(452,332,31,26,'#2a1e10');
-    border(450,330,35,30,'#7a5030',1);
-    rect(200,310,40,50,'#1a1a1a'); // bag of coffee beans
 
-    // zoom effect: draw character back (silhouette, facing counter)
+    // City skyline
+    [
+      { x: 0, w: 50, h: 200 }, { x: 45, w: 40, h: 280 }, { x: 80, w: 70, h: 180 },
+      { x: 140, w: 35, h: 250 }, { x: 170, w: 55, h: 160 }, { x: 218, w: 40, h: 230 },
+      { x: 580, w: 55, h: 200 }, { x: 628, w: 40, h: 260 }, { x: 662, w: 70, h: 180 },
+      { x: 720, w: 35, h: 240 }, { x: 748, w: 52, h: 170 },
+    ].forEach(b => fillRect(b.x, H - b.h, b.w, b.h, '#0a0a14'));
+
+    fillRect(0, H - 60, W, 60, '#0d0d18');
+
+    // Puddle reflection
+    ctx.save(); ctx.globalAlpha = 0.2; ctx.fillStyle = '#4466aa';
+    ctx.beginPath(); ctx.ellipse(W / 2, H - 40, 200, 15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Game title
     ctx.save();
-    const scaleVal = 1 + zoomT * 0.4;
-    ctx.translate(W/2, H/2); ctx.scale(scaleVal, scaleVal); ctx.translate(-W/2, -H/2);
+    ctx.shadowColor = '#aa66ff'; ctx.shadowBlur = 30;
+    ctx.fillStyle = '#cc99ff';
+    ctx.font = '36px "Press Start 2P", monospace';
+    const title = 'KANKA, GEYM';
+    const tw = ctx.measureText(title).width;
+    ctx.fillText(title, W / 2 - tw / 2, H / 2 - 60);
+    ctx.restore();
 
-    // player from behind at counter
-    rect(330, 200, 80, 160, '#0e0a18'); // body
-    rect(350, 160, 40, 46, '#0e0a18'); // head
-    rect(325, 225, 12, 90, '#0e0a18'); // left arm
-    rect(403, 225, 12, 90, '#0e0a18'); // right arm
+    ctx.fillStyle = '#887799';
+    ctx.font = '10px "Press Start 2P", monospace';
+    const sub = 'Bir kayıp gecenin peşinde';
+    const sw = ctx.measureText(sub).width;
+    ctx.fillText(sub, W / 2 - sw / 2, H / 2 - 25);
 
-    // face zoom-in (appears when zoomT > 0.5)
-    if(zoomT > 0.5){
-      const alpha = (zoomT - 0.5) * 2;
-      ctx.globalAlpha = alpha;
-      // face close-up overlay (center screen)
-      _drawPlayerFace(W/2, H/2 - 60, 2.5);
-      ctx.globalAlpha = 1;
+    if (Math.floor(now / 600) % 2 === 0) {
+      ctx.fillStyle = '#eeddff';
+      ctx.font = '11px "Press Start 2P", monospace';
+      const ps = 'BAŞLAMAK İÇİN BASIN';
+      const psw = ctx.measureText(ps).width;
+      ctx.fillText(ps, W / 2 - psw / 2, H / 2 + 40);
     }
-    ctx.restore();
+
+    ctx.fillStyle = '#443355';
+    ctx.font = '7px "Press Start 2P", monospace';
+    ctx.fillText('v1.0', 10, H - 10);
   }
 
-  function _drawPlayerFace(cx, cy, s){
-    // Simple pixel art self-face close-up
-    function p(ax,ay,aw,ah,c){ rect(cx+ax*s,cy+ay*s,aw*s,ah*s,c); }
-    p(-20,-28,40,4,'#1a0e02'); // hair top
-    p(-22,-24,44,2,'#1a0e02');
-    p(-18,-22,36,26,'#f0b880'); // face
-    p(-22,-14,4,16,'#f0b880'); p(18,-14,4,16,'#f0b880'); // cheeks
-    // eyes
-    p(-14,-14,10,6,'#fff'); p(4,-14,10,6,'#fff');
-    p(-12,-13,6,5,'#1a0a00'); p(6,-13,6,5,'#1a0a00');
-    p(-10,-12,3,3,'#ffe0a0'); p(8,-12,3,3,'#ffe0a0'); // highlight
-    // eyebrows
-    p(-15,-16,12,2,'#1a0e02'); p(3,-16,12,2,'#1a0e02');
-    // nose
-    p(-2,-4,4,4,'#d09060');
-    // mouth (determined)
-    p(-8,4,16,2,'#c07050');
-    p(-10,6,4,2,'#c07050'); p(6,6,4,2,'#c07050');
-    // stubble dots
-    for(let i=0;i<6;i++) p(-10+i*4,8,1,1,'rgba(80,40,20,0.4)');
-  }
-
-  // ── Ending scene ──────────────────────────────────────────
-  function drawEnding(){
-    const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#0a1020'); g.addColorStop(1,'#101030');
-    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    // stars
-    for(let i=0;i<80;i++){
-      const sx=(i*137)%W, sy=(i*91)%H;
-      ctx.fillStyle=`rgba(255,255,255,${0.3+Math.sin(i)*0.3})`;
-      ctx.fillRect(sx,sy,2,2);
-    }
-    // Mağaram window from outside
-    rect(W/2-100,H/2-120,200,180,'#0e0c18');
-    rect(W/2-94,H/2-114,188,168,'rgba(255,200,80,0.15)');
-    border(W/2-100,H/2-120,200,180,'#4a3060',3);
-    rect(W/2-2,H/2-120,4,180,'#4a3060');
-    rect(W/2-100,H/2-30,200,4,'#4a3060');
-    // warm light from window
-    ctx.save();
-    const wg=ctx.createRadialGradient(W/2,H/2-30,0,W/2,H/2-30,160);
-    wg.addColorStop(0,'rgba(255,200,80,0.15)');
-    wg.addColorStop(1,'rgba(255,200,80,0)');
-    ctx.fillStyle=wg; ctx.fillRect(W/2-160,H/2-190,320,320);
-    ctx.restore();
-    neonText('Kanka, Geym', W/2, H/2+100, 20, '#c8a0ff');
-  }
-
-  // ── Title / menu screen ───────────────────────────────────
-  function drawTitle(){
-    const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#060610'); g.addColorStop(1,'#10081a');
-    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-    // rain effect (static)
-    for(let i=0;i<60;i++){
-      const rx=(i*173)%W, ry=(i*113)%H;
-      ctx.strokeStyle='rgba(100,80,200,0.2)'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx+4,ry+16); ctx.stroke();
-    }
-    // city silhouette
-    ctx.fillStyle='#08060e';
-    [[0,420,80,180],[80,400,60,200],[140,440,100,160],[240,380,80,220],[320,450,60,150],
-     [380,410,100,190],[480,430,80,170],[560,390,100,210],[660,420,80,180],[740,440,60,160]
-    ].forEach(([x,y,w,h])=>{
-      rect(x,y,w,h,'#08060e');
-      // window lights
-      for(let r=0;r<4;r++) for(let c=0;c<Math.floor(w/14);c++){
-        if(Math.random()>0.5) rect(x+4+c*12,y+8+r*30,8,14,'rgba(255,220,100,0.15)');
-      }
-    });
-    // logo area
-    ctx.save();
-    ctx.shadowColor='#c060ff'; ctx.shadowBlur=30;
-    text('KANKA, GEYM', W/2, 170, 28, '#c8a0ff','center');
-    ctx.restore();
-    text('BİR TÜRK GECESİNİN HİKAYESİ', W/2, 210, 8, '#7050a0','center');
-    // press start
-    ctx.save(); ctx.shadowColor='#ffe080'; ctx.shadowBlur=10;
-    text('[ BAŞLAMAK İÇİN TIKLA / SPACE ]', W/2, H-80, 8, '#ffe080','center');
-    ctx.restore();
-    text('v1.0  –  2025', W/2, H-20, 6, '#443355','center');
-  }
+  // ── Public API ────────────────────────────────────────────────────────────
 
   return {
-    ctx, W, H,
-    clear: () => rect(0,0,W,H,'#000'),
-    drawOverworld, drawLocationScene,
-    drawCutsceneCloseup, drawCutsceneKitchen,
-    drawEnding, drawTitle,
+    ctx,
+    W,
+    H,
+    clear,
+    drawOverworld,
+    drawLocationScene,
+    drawMemoryScene,
+    drawCutsceneCloseup,
+    drawCutsceneKitchen,
+    drawEnding,
+    drawTitle,
   };
 })();
