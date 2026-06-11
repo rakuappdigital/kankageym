@@ -1,1 +1,40 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Narrative Game</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Google Fonts üzerinden retro 8-bit font -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <!-- Oyun Ekranı Konteyneri -->
+    <div id="game-container">
+        
+        <!-- Kuş Bakışı Harita Katmanı -->
+        <canvas id="game-canvas" width="800" height="600"></canvas>
+        
+        <!-- Sinematik ve Omuz Üstü Sahneler İçin Arka Plan Katmanı -->
+        <div id="scene-layer" class="hidden"></div>
+        
+        <!-- Diyalog Kutusu Katmanı -->
+        <div id="dialogue-box" class="hidden">
+            <p id="dialogue-text"></p>
+            <div id="continue-indicator" class="hidden">Devam (Boşluk / Tıkla)</div>
+        </div>
+
+        <!-- Ekran Kararma (Fade to Black) Katmanı -->
+        <div id="fade-overlay"></div>
+    </div>
+
+    <!-- Modüler Scriptler -->
+    <script src="js/stateManager.js"></script>
+    <script src="js/audioManager.js"></script>
+    <script src="js/dialogueManager.js"></script>
+    <script src="js/cutscenes.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
 
