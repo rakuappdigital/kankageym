@@ -114,13 +114,8 @@ const Dialogue = (() => {
   }
 
   // ── input glue ──────────────────────────────────────────
-  document.addEventListener('keydown', e => {
-    if(e.code === 'Space' || e.code === 'Enter'){
-      if(!box.classList.contains('hidden') && choiceEl.classList.contains('hidden')){
-        advance();
-      }
-    }
-  });
+  // Space/Enter handled exclusively by main.js to avoid double-advance.
+  // Only keep click handler here for dialogue-box area clicks.
   box.addEventListener('click', () => {
     if(choiceEl.classList.contains('hidden')) advance();
   });
